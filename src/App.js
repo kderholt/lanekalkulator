@@ -4,10 +4,10 @@ import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearSca
 
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, PointElement, LineElement, Title);
 
-// Property tax calculation (no changes needed here)
+// Property tax calculation
 const calculatePropertyTax = (propertyValue, mode, customAmount) => {
     if (propertyValue <= 0) return 0;
-    
+
     if (mode === 'oslo') {
         const taxableBase = Math.max(0, (propertyValue * 0.7) - 4700000);
         return taxableBase * 0.00235;
@@ -35,7 +35,7 @@ const App = () => {
     const [annualAppreciation, setAnnualAppreciation] = useState(3.0);
     const [requiredReturn, setRequiredReturn] = useState(5.0);
     const [rentalIncome, setRentalIncome] = useState(0);
-    
+
     // Property tax settings
     const [propertyTaxMode, setPropertyTaxMode] = useState('oslo'); // 'oslo' or 'custom'
     const [customPropertyTaxAmount, setCustomPropertyTaxAmount] = useState(5000);
@@ -64,10 +64,10 @@ const App = () => {
             if (desiredMonthlyPayment <= 0 || interestRate <= 0 || loanTerm <= 0) {
                 return { maxLoan: 0, maxPropertyPrice: totalDownPayment };
             }
-            
+
             const monthlyInterestRate = interestRate / 100 / 12;
             const numberOfPayments = loanTerm * 12;
-            
+
             let estimatedPropertyValue = desiredMonthlyPayment * 200; // Start with a rough guess
             let maxLoan = 0;
 
@@ -81,13 +81,13 @@ const App = () => {
                     maxLoan = 0;
                     break;
                 }
-                
+
                 if (loanType === 'annuity') {
-                     maxLoan = pAndI * ((Math.pow(1 + monthlyInterestRate, numberOfPayments) - 1) / (monthlyInterestRate * Math.pow(1 + monthlyInterestRate, numberOfPayments)));
+                    maxLoan = pAndI * ((Math.pow(1 + monthlyInterestRate, numberOfPayments) - 1) / (monthlyInterestRate * Math.pow(1 + monthlyInterestRate, numberOfPayments)));
                 } else { // Serial loan
                     maxLoan = pAndI / ((1 / numberOfPayments) + monthlyInterestRate);
                 }
-                
+
                 const newEstimatedPropertyValue = maxLoan + totalDownPayment;
                 // If the value has stabilized, break the loop
                 if (Math.abs(newEstimatedPropertyValue - estimatedPropertyValue) < 1000) {
@@ -96,7 +96,7 @@ const App = () => {
                 }
                 estimatedPropertyValue = newEstimatedPropertyValue;
             }
-            
+
             maxLoan = maxLoan > 0 ? maxLoan : 0;
             return { maxLoan, maxPropertyPrice: maxLoan + totalDownPayment };
         };
@@ -106,7 +106,7 @@ const App = () => {
 
             const monthlyInterestRate = interestRate / 100 / 12;
             const numberOfPayments = loanTerm * 12;
-            
+
             let balance = amount;
             const amortization = [];
             let totalInterestPaid = 0;
@@ -163,7 +163,7 @@ const App = () => {
 
         const finalLoan1 = Math.max(0, ownershipValue1 - downPayment1);
         const finalLoan2 = Math.max(0, ownershipValue2 - downPayment2);
-        
+
         const totalLoanAmount = finalLoan1 + finalLoan2;
         setLoanAmount(totalLoanAmount);
 
@@ -176,24 +176,25 @@ const App = () => {
         } else {
             const details1 = calculateLoanDetails(finalLoan1);
             const details2 = calculateLoanDetails(finalLoan2);
-            
+
             setLoanDetails1({ amount: finalLoan1, payment: details1.firstMonthPayment });
             setLoanDetails2({ amount: finalLoan2, payment: details2.firstMonthPayment });
             setTotalInterest(details1.totalInterestPaid + details2.totalInterestPaid);
             setCalculatedMonthlyPayment(details1.firstMonthPayment + details2.firstMonthPayment);
-            
+
             // FIX 1: Create a combined amortization schedule that correctly reflects two separate loans
             const correctCombinedAmortization = [];
             const numberOfPayments = loanTerm * 12;
             for (let i = 0; i < numberOfPayments; i++) {
-                const monthData1 = details1.amortization[i] || { balance: 0, principal: 0, interest: 0 };
-                const monthData2 = details2.amortization[i] || { balance: 0, principal: 0, interest: 0 };
+                const monthData1 = details1.amortization[i] || { balance: 0, principal: 0, interest: 0, totalPayment: 0 };
+                const monthData2 = details2.amortization[i] || { balance: 0, principal: 0, interest: 0, totalPayment: 0 };
 
                 correctCombinedAmortization.push({
                     month: i + 1,
                     balance: monthData1.balance + monthData2.balance,
                     principal: monthData1.principal + monthData2.principal,
                     interest: monthData1.interest + monthData2.interest,
+                    totalPayment: monthData1.totalPayment + monthData2.totalPayment,
                 });
             }
             setAmortizationData(correctCombinedAmortization);
@@ -203,19 +204,19 @@ const App = () => {
         setPropertyTax(calculatedPropertyTax);
 
     }, [calculationMode, desiredMonthlyPayment, propertyValue, interestRate, loanTerm, downPayment1, downPayment2, municipalDues, homeInsurance, hoa, maintenance, annualAppreciation, requiredReturn, rentalIncome, loanType, ownershipSplit, propertyTaxMode, customPropertyTaxAmount]);
-    
+
     useEffect(() => {
         const monthlyFixedCosts = (municipalDues / 12) + (homeInsurance / 12) + (propertyTax / 12) + (maintenance / 12) + hoa;
         const totalCost = calculatedMonthlyPayment + monthlyFixedCosts;
         setTotalMonthlyCost(totalCost);
         setNetMonthlyCost(totalCost - rentalIncome);
-        
+
         if (loanAmount > 0 && amortizationData.length > 0) {
-           const payoff = new Date();
-           payoff.setMonth(payoff.getMonth() + amortizationData.length);
-           setPayoffDate(payoff.toLocaleDateString('nb-NO', { year: 'numeric', month: 'long' }));
+            const payoff = new Date();
+            payoff.setMonth(payoff.getMonth() + amortizationData.length);
+            setPayoffDate(payoff.toLocaleDateString('nb-NO', { year: 'numeric', month: 'long' }));
         } else {
-           setPayoffDate('N/A');
+            setPayoffDate('N/A');
         }
 
     }, [calculatedMonthlyPayment, municipalDues, homeInsurance, hoa, maintenance, rentalIncome, loanAmount, amortizationData, propertyTax]);
@@ -230,42 +231,87 @@ const App = () => {
 
     // FIX 2: Complete rewrite of NPV and related financial metrics for correctness
     const calculateAdvancedMetrics = () => {
-        if (yearsToPayoff <= 0) return { netPresentValue: 0, returnOnEquity: 0 };
+        if (yearsToPayoff <= 0 || !amortizationData || amortizationData.length === 0) {
+            return { netPresentValue: 0, returnOnEquity: 0 };
+        }
 
-        const annualCosts = municipalDues + homeInsurance + propertyTax + maintenance;
+        const annualCosts = municipalDues + homeInsurance + propertyTax + maintenance + (hoa * 12);
         const annualRentalIncome = rentalIncome * 12;
 
         let presentValueOfAllCashFlows = 0;
         for (let year = 1; year <= yearsToPayoff; year++) {
-            // Aggregate monthly loan payments to an annual sum for the current year
             const startMonth = (year - 1) * 12;
             const endMonth = year * 12;
-            const annualLoanPayment = amortizationData.slice(startMonth, endMonth).reduce((sum, month) => sum + (month.principal + month.interest), 0);
-            
+            const annualLoanPayment = amortizationData.slice(startMonth, endMonth).reduce((sum, month) => sum + month.totalPayment, 0);
+
             const netCashFlowForYear = annualRentalIncome - annualCosts - annualLoanPayment;
-            
-            // Discount this year's cash flow back to present value
+
             presentValueOfAllCashFlows += netCashFlowForYear / Math.pow(1 + (requiredReturn / 100), year);
         }
 
-        // Calculate the present value of the final property sale (net of any remaining debt, which is 0)
         const presentValueOfFutureSale = futurePropertyValue / Math.pow(1 + (requiredReturn / 100), yearsToPayoff);
-
-        // NPV is the sum of all discounted future cash flows (including sale) minus the initial investment
         const netPresentValue = presentValueOfAllCashFlows + presentValueOfFutureSale - totalDownPayment;
+
+        const totalOtherCostsPaid = (annualCosts - annualRentalIncome) * yearsToPayoff;
+        const netProfit = futurePropertyValue - totalDownPayment - totalInterest - totalOtherCostsPaid;
+        const returnOnEquity = totalDownPayment > 0
+            ? (Math.pow((totalDownPayment + netProfit) / totalDownPayment, 1 / yearsToPayoff) - 1) * 100
+            : 0;
+
+        // Total return comparisons - what you end up with after the investment period
+        const totalPropertyReturn = futurePropertyValue - loanAmount + (annualRentalIncome * yearsToPayoff) - (annualCosts * yearsToPayoff) - totalInterest;
+        const totalAlternativeReturn = totalDownPayment * Math.pow(1 + (requiredReturn / 100), yearsToPayoff);
+        const investmentAdvantage = totalPropertyReturn - totalAlternativeReturn;
+
+        // Separate present value components for detailed breakdown
+        let presentValueOfCosts = 0;
+        let presentValueOfRentalIncome = 0;
         
-        // Return on Equity (RoE)
-        const totalPaidIn = totalDownPayment + ((annualCosts - annualRentalIncome) * yearsToPayoff) + totalInterest;
-        const netProfit = futurePropertyValue - totalPaidIn;
-        const returnOnEquity = totalDownPayment > 0 ? (Math.pow((totalDownPayment + netProfit) / totalDownPayment, 1 / yearsToPayoff) - 1) * 100 : 0;
+        for (let year = 1; year <= yearsToPayoff; year++) {
+            const startMonth = (year - 1) * 12;
+            const endMonth = year * 12;
+            const annualLoanPayment = amortizationData.slice(startMonth, endMonth).reduce((sum, month) => sum + month.totalPayment, 0);
+            const totalAnnualCosts = annualCosts + annualLoanPayment;
+            
+            presentValueOfCosts += totalAnnualCosts / Math.pow(1 + (requiredReturn / 100), year);
+            presentValueOfRentalIncome += annualRentalIncome / Math.pow(1 + (requiredReturn / 100), year);
+        }
 
+        // Present value comparisons - what both investments are worth in today's money
+        const presentValueOfPropertyInvestment = presentValueOfAllCashFlows + presentValueOfFutureSale;
+        const presentValueOfAlternativeInvestment = totalDownPayment; // Since invested today
+        const presentValueDifference = presentValueOfPropertyInvestment - presentValueOfAlternativeInvestment;
 
-        return { netPresentValue, returnOnEquity };
+        return { 
+            netPresentValue, 
+            returnOnEquity, 
+            totalPropertyReturn, 
+            totalAlternativeReturn, 
+            investmentAdvantage,
+            presentValueOfPropertyInvestment,
+            presentValueOfAlternativeInvestment,
+            presentValueDifference,
+            presentValueOfFutureSale,
+            presentValueOfRentalIncome,
+            presentValueOfCosts
+        };
     };
-    
-    const { netPresentValue, returnOnEquity } = calculateAdvancedMetrics();
+
+    const { 
+        netPresentValue, 
+        returnOnEquity, 
+        totalPropertyReturn, 
+        totalAlternativeReturn, 
+        investmentAdvantage,
+        presentValueOfPropertyInvestment,
+        presentValueOfAlternativeInvestment,
+        presentValueDifference,
+        presentValueOfFutureSale,
+        presentValueOfRentalIncome,
+        presentValueOfCosts
+    } = calculateAdvancedMetrics();
     const isGoodInvestment = returnOnEquity >= requiredReturn && netPresentValue > 0;
-    
+
     // Chart Data
     const amortizationChartData = {
         labels: amortizationData.map(d => `Måned ${d.month}`),
@@ -277,7 +323,6 @@ const App = () => {
     };
 
     return (
-        // The JSX part (return statement) remains unchanged as the props are the same
         <div className="bg-gray-100 min-h-screen p-4 sm:p-6 lg:p-8 font-sans">
             <div className="max-w-7xl mx-auto">
                 <header className="mb-8 text-center">
@@ -287,13 +332,12 @@ const App = () => {
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                     <div className="lg:col-span-1 bg-white p-6 rounded-xl shadow-lg">
-                        {/* All input fields and sliders remain here, no changes needed */}
                         <h2 className="text-2xl font-semibold text-gray-700 mb-4 border-b pb-3">Kalkuleringsmåte</h2>
                         <div className="flex rounded-md shadow-sm mb-6">
                             <button onClick={() => setCalculationMode('byPayment')} className={`flex-1 p-2 text-sm rounded-l-md ${calculationMode === 'byPayment' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}>Finn boligpris fra månedsbeløp</button>
                             <button onClick={() => setCalculationMode('byPrice')} className={`flex-1 p-2 text-sm rounded-r-md ${calculationMode === 'byPrice' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}>Finn månedsbeløp fra boligpris</button>
                         </div>
-                        
+
                         {calculationMode === 'byPayment' ? (
                             <div>
                                 <InputSlider label="Ønsket Månedlig Betaling (Totalt)" value={desiredMonthlyPayment} onChange={e => setDesiredMonthlyPayment(Number(e.target.value))} min={1000} max={100000} step={1000} format="currency" />
@@ -303,7 +347,7 @@ const App = () => {
                                 </div>
                             </div>
                         ) : (
-                             <div>
+                            <div>
                                 <InputSlider label="Ønsket Boligpris" value={propertyValue} onChange={e => setPropertyValue(Number(e.target.value))} min={500000} max={30000000} step={50000} format="currency" />
                                 <div className="mt-6 pt-6 border-t">
                                     <SummaryBox label="Nødvendig Månedlig Betaling" value={calculatedMonthlyPayment} format="currency" color="text-purple-600" isLarge={true} />
@@ -336,7 +380,7 @@ const App = () => {
                         <InputSlider label="Forventet prisendring (% per år)" value={annualAppreciation} onChange={e => setAnnualAppreciation(Number(e.target.value))} min={-10} max={15} step={0.1} format="percent" />
                         <InputSlider label="Avkastningskrav (% per år)" value={requiredReturn} onChange={e => setRequiredReturn(Number(e.target.value))} min={1} max={15} step={0.1} format="percent" />
                         <InputSlider label="Utleieinntekt (kr/mnd)" value={rentalIncome} onChange={e => setRentalIncome(Number(e.target.value))} min={0} max={30000} step={500} format="currency" />
-                        
+
                         <h3 className="text-xl font-semibold text-gray-700 mt-8 mb-4 border-b pb-2">Eiendomsskatt</h3>
                         <div className="mb-4">
                             <label className="block text-sm font-medium text-gray-700 mb-2">Kommune</label>
@@ -357,7 +401,7 @@ const App = () => {
                     <div className="lg:col-span-2 space-y-8">
                         <div className="bg-white p-6 rounded-xl shadow-lg">
                             <h2 className="text-2xl font-semibold text-gray-700 mb-4">Individuell Fordeling</h2>
-                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-center">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-center">
                                 <div className="bg-gray-50 p-4 rounded-lg">
                                     <h3 className="font-bold text-lg text-gray-800">Låntaker 1 (Deg)</h3>
                                     <p className="text-sm text-gray-600">Egenkapital: <span className="font-semibold">{formatCurrency(downPayment1)} ({downPaymentPercentage1.toFixed(0)}%)</span></p>
@@ -365,7 +409,7 @@ const App = () => {
                                     <SummaryBox label="Ditt Lånebeløp" value={loanDetails1.amount} format="currency" color="text-blue-600" isLarge={true} />
                                     <SummaryBox label="Din Månedlige Betaling (1. mnd)" value={loanDetails1.payment} format="currency" color="text-blue-600" isLarge={true} />
                                 </div>
-                                 <div className="bg-gray-50 p-4 rounded-lg">
+                                <div className="bg-gray-50 p-4 rounded-lg">
                                     <h3 className="font-bold text-lg text-gray-800">Låntaker 2</h3>
                                     <p className="text-sm text-gray-600">Egenkapital: <span className="font-semibold">{formatCurrency(downPayment2)} ({downPaymentPercentage2.toFixed(0)}%)</span></p>
                                     <p className="text-sm text-gray-600">Eierandel: <span className="font-semibold">{100 - ownershipSplit}%</span></p>
@@ -386,22 +430,78 @@ const App = () => {
                                 <SummaryBox label="Total Egenkapitalandel" value={finalPropertyValue > 0 ? `${((totalDownPayment / finalPropertyValue) * 100).toFixed(1)}%` : '0%'} />
                                 <SummaryBox label="Boligverdi ved nedbetaling" value={futurePropertyValue} format="currency" />
                                 <SummaryBox label="Forventet egenkapitalgevinst" value={totalEquityGain} format="currency" />
-                                <SummaryBox 
-                                    label="Avkastning på egenkapital (RoE)" 
-                                    value={`${returnOnEquity.toFixed(1)}%`} 
-                                    color={returnOnEquity >= requiredReturn ? "text-green-600" : "text-red-600"} 
+                                <SummaryBox
+                                    label="Avkastning på egenkapital (RoE)"
+                                    value={`${returnOnEquity.toFixed(1)}%`}
+                                    color={returnOnEquity >= requiredReturn ? "text-green-600" : "text-red-600"}
                                 />
-                                <SummaryBox 
-                                    label="Netto nåverdi (NPV)" 
-                                    value={netPresentValue} 
-                                    format="currency" 
-                                    color={netPresentValue > 0 ? "text-green-600" : "text-red-600"} 
+                                
+                                <div className="col-span-full">
+                                    <h4 className="text-lg font-semibold text-gray-700 mt-6 mb-3 border-b pb-2">Del 1: Nåverdi-analyse (Er det en god deal i dag?)</h4>
+                                </div>
+                                
+                                <SummaryBox
+                                    label="Nåverdi av boligsalg"
+                                    value={presentValueOfFutureSale}
+                                    format="currency"
                                 />
-                                <SummaryBox 
-                                    label="Investeringsvurdering" 
-                                    value={isGoodInvestment ? "Anbefalt" : "Ikke anbefalt"} 
-                                    color={isGoodInvestment ? "text-green-600" : "text-red-600"} 
+                                <SummaryBox
+                                    label="Nåverdi av utleieinntekter"
+                                    value={presentValueOfRentalIncome}
+                                    format="currency"
                                 />
+                                <SummaryBox
+                                    label="Nåverdi av kostnader"
+                                    value={-presentValueOfCosts}
+                                    format="currency"
+                                    color="text-red-600"
+                                />
+                                <SummaryBox
+                                    label="(=) Nåverdi av boligprosjektet"
+                                    value={presentValueOfPropertyInvestment}
+                                    format="currency"
+                                />
+                                <SummaryBox
+                                    label="(-) Startkostnad (din egenkapital)"
+                                    value={-totalDownPayment}
+                                    format="currency"
+                                    color="text-red-600"
+                                />
+                                <SummaryBox
+                                    label="(=) Netto nåverdi (NPV)"
+                                    value={netPresentValue}
+                                    format="currency"
+                                    color={netPresentValue > 0 ? "text-green-600" : "text-red-600"}
+                                />
+                                
+                                <div className="col-span-full">
+                                    <h4 className="text-lg font-semibold text-gray-700 mt-6 mb-3 border-b pb-2">Del 2: Sluttverdi-analyse (Hvem har mest penger om {yearsToPayoff} år?)</h4>
+                                </div>
+                                
+                                <SummaryBox
+                                    label="Sluttverdi fra boliginvestering"
+                                    value={totalPropertyReturn}
+                                    format="currency"
+                                />
+                                <SummaryBox
+                                    label={`Sluttverdi fra alternativ (${requiredReturn}%)`}
+                                    value={totalAlternativeReturn}
+                                    format="currency"
+                                />
+                                <SummaryBox
+                                    label="(=) Økonomisk fordel fra bolig"
+                                    value={investmentAdvantage}
+                                    format="currency"
+                                    color={investmentAdvantage > 0 ? "text-green-600" : "text-red-600"}
+                                />
+                                
+                                <div className="col-span-full">
+                                    <SummaryBox
+                                    label="Investeringsvurdering"
+                                    value={isGoodInvestment ? "Anbefalt" : "Ikke anbefalt"}
+                                    color={isGoodInvestment ? "text-green-600" : "text-red-600"}
+                                    />
+                                </div>
                             </div>
                         </div>
 
@@ -424,15 +524,55 @@ const App = () => {
     );
 };
 
-// Helper components and formatCurrency utility remain unchanged.
+// Helper component for input sliders with both slider and number input
 const InputSlider = ({ label, value, onChange, min, max, step, format }) => {
-    // ... (same as before)
+    const handleNumberChange = (e) => {
+        const newValue = Number(e.target.value);
+        if (!isNaN(newValue)) {
+            onChange({ target: { value: newValue } });
+        }
+    };
+
+    return (
+        <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+            <div className="flex items-center space-x-4">
+                <input
+                    type="range"
+                    min={min}
+                    max={max}
+                    step={step}
+                    value={value}
+                    onChange={onChange}
+                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                />
+                <input
+                    type="number"
+                    min={min}
+                    max={max}
+                    step={step}
+                    value={value}
+                    onChange={handleNumberChange}
+                    className="w-32 px-2 py-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+            </div>
+        </div>
+    );
 };
-const SummaryBox = ({ label, value, format, color = 'text-gray-800', isLarge = false }) => {
-    // ... (same as before)
-};
+
+// Helper component for summary boxes
+const SummaryBox = ({ label, value, format, color = 'text-gray-800', isLarge = false }) => (
+    <div className="bg-gray-100 p-3 rounded-lg mt-2">
+        <p className="text-sm text-gray-600">{label}</p>
+        <p className={`font-bold ${isLarge ? 'text-2xl' : 'text-xl'} ${color}`}>
+            {format === 'currency' ? formatCurrency(value) : value}
+        </p>
+    </div>
+);
+
+// Currency formatting utility for Norwegian Krone (NOK)
 const formatCurrency = (amount) => {
-    // ... (same as before)
+    return new Intl.NumberFormat('nb-NO', { style: 'currency', currency: 'NOK', minimumFractionDigits: 0, maximumFractionDigits: 0, }).format(amount || 0);
 };
 
 export default App;
