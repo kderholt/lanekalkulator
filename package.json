@@ -2,7 +2,7 @@
   "name": "my-mortgage-app",
   "version": "0.1.0",
   "private": true,
-  "homepage": "https://kderholt.github.io/lanekalkulator",
+  "homepage": "https://lanekalkulator.kjetil.ro",
   "dependencies": {
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.6.4",

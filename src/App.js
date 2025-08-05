@@ -4,6 +4,20 @@ import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearSca
 
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, PointElement, LineElement, Title);
 
+// Property tax calculation
+const calculatePropertyTax = (propertyValue, mode, customRate) => {
+    if (propertyValue <= 0) return 0;
+    
+    if (mode === 'oslo') {
+        // Oslo: 2.35‰ on 70% of property value, with deduction up to 4.7M
+        const taxableBase = Math.max(0, (propertyValue * 0.7) - 4700000);
+        return taxableBase * 0.00235;
+    } else {
+        // Custom rate in ‰ (per mille)
+        return propertyValue * (customRate / 1000);
+    }
+};
+
 // Main App Component
 const App = () => {
     // State for calculation mode
@@ -20,6 +34,10 @@ const App = () => {
     const [homeInsurance, setHomeInsurance] = useState(5000);
     const [hoa, setHoa] = useState(0);
     const [rentalIncome, setRentalIncome] = useState(0);
+    
+    // Property tax settings
+    const [propertyTaxMode, setPropertyTaxMode] = useState('oslo'); // 'oslo' or 'custom'
+    const [customPropertyTaxRate, setCustomPropertyTaxRate] = useState(2.0);
 
     // Mode-specific inputs
     const [desiredMonthlyPayment, setDesiredMonthlyPayment] = useState(20000);
@@ -36,6 +54,7 @@ const App = () => {
     const [totalInterest, setTotalInterest] = useState(0);
     const [loanDetails1, setLoanDetails1] = useState({ amount: 0, payment: 0 });
     const [loanDetails2, setLoanDetails2] = useState({ amount: 0, payment: 0 });
+    const [propertyTax, setPropertyTax] = useState(0);
 
     // Effect to recalculate on input changes
     useEffect(() => {
@@ -97,11 +116,15 @@ const App = () => {
             setAmortizationData(combinedAmortization);
         }
 
-    }, [calculationMode, desiredMonthlyPayment, propertyValue, interestRate, loanTerm, downPayment1, downPayment2, municipalDues, homeInsurance, hoa, rentalIncome, loanType, ownershipSplit]);
+        // Calculate property tax
+        const calculatedPropertyTax = calculatePropertyTax(currentPropertyValue, propertyTaxMode, customPropertyTaxRate);
+        setPropertyTax(calculatedPropertyTax);
+
+    }, [calculationMode, desiredMonthlyPayment, propertyValue, interestRate, loanTerm, downPayment1, downPayment2, municipalDues, homeInsurance, hoa, rentalIncome, loanType, ownershipSplit, propertyTaxMode, customPropertyTaxRate]);
     
     // Update total costs whenever calculated payments change
     useEffect(() => {
-        const monthlyFixedCosts = (municipalDues / 12) + (homeInsurance / 12) + hoa;
+        const monthlyFixedCosts = (municipalDues / 12) + (homeInsurance / 12) + (propertyTax / 12) + hoa;
         const totalCost = calculatedMonthlyPayment + monthlyFixedCosts;
         setTotalMonthlyCost(totalCost);
         setNetMonthlyCost(totalCost - rentalIncome);
@@ -114,7 +137,7 @@ const App = () => {
            setPayoffDate('N/A');
         }
 
-    }, [calculatedMonthlyPayment, municipalDues, homeInsurance, hoa, rentalIncome, loanAmount, amortizationData]);
+    }, [calculatedMonthlyPayment, municipalDues, homeInsurance, hoa, rentalIncome, loanAmount, amortizationData, propertyTax]);
 
 
     // Affordability calculation logic
@@ -125,7 +148,13 @@ const App = () => {
         
         const monthlyInterestRate = interestRate / 100 / 12;
         const numberOfPayments = loanTerm * 12;
-        const otherCosts = (municipalDues / 12) + (homeInsurance / 12) + hoa;
+        
+        // For affordability calculation, we need to estimate property tax based on desired payment
+        // We'll use a rough estimate and iterate if needed
+        let estimatedPropertyValue = desiredMonthlyPayment * 200; // rough estimate
+        let estimatedPropertyTax = calculatePropertyTax(estimatedPropertyValue, propertyTaxMode, customPropertyTaxRate);
+        
+        const otherCosts = (municipalDues / 12) + (homeInsurance / 12) + (estimatedPropertyTax / 12) + hoa;
         const pAndI = desiredMonthlyPayment + Number(rentalIncome) - otherCosts;
 
         if (pAndI <= 0) {
@@ -191,8 +220,8 @@ const App = () => {
         datasets: [{ label: 'Gjenværende Lånebalanse', data: amortizationData.map(d => d.balance), borderColor: 'rgb(75, 192, 192)', backgroundColor: 'rgba(75, 192, 192, 0.2)', fill: true, tension: 0.1, }],
     };
     const paymentBreakdownChartData = {
-        labels: ['Avdrag & Renter', 'Faste Kostnader', 'Felleskostnader'],
-        datasets: [ { data: [ calculatedMonthlyPayment, (municipalDues / 12) + (homeInsurance / 12), hoa ].map(v => v > 0 ? v : 0), backgroundColor: ['#4CAF50', '#FFC107', '#2196F3'], hoverBackgroundColor: ['#66BB6A', '#FFCA28', '#42A5F5'],}],
+        labels: ['Avdrag & Renter', 'Kommunale Avgifter', 'Eiendomsskatt', 'Boligforsikring', 'Felleskostnader'],
+        datasets: [ { data: [ calculatedMonthlyPayment, (municipalDues / 12), (propertyTax / 12), (homeInsurance / 12), hoa ].map(v => v > 0 ? v : 0), backgroundColor: ['#4CAF50', '#FFC107', '#FF5722', '#9C27B0', '#2196F3'], hoverBackgroundColor: ['#66BB6A', '#FFCA28', '#FF7043', '#BA68C8', '#42A5F5'],}],
     };
 
     return (
@@ -250,6 +279,22 @@ const App = () => {
                         <InputSlider label="Boligforsikring (kr/år)" value={homeInsurance} onChange={e => setHomeInsurance(Number(e.target.value))} min={0} max={50000} step={500} format="currency" />
                         <InputSlider label="Felleskostnader (kr/mnd)" value={hoa} onChange={e => setHoa(Number(e.target.value))} min={0} max={20000} step={250} format="currency" />
                         <InputSlider label="Utleieinntekt (kr/mnd)" value={rentalIncome} onChange={e => setRentalIncome(Number(e.target.value))} min={0} max={30000} step={500} format="currency" />
+                        
+                        <h3 className="text-xl font-semibold text-gray-700 mt-8 mb-4 border-b pb-2">Eiendomsskatt</h3>
+                        <div className="mb-4">
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Kommune</label>
+                            <div className="flex rounded-md shadow-sm mb-4">
+                                <button onClick={() => setPropertyTaxMode('oslo')} className={`flex-1 p-2 text-sm rounded-l-md ${propertyTaxMode === 'oslo' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}>Oslo (2,35‰)</button>
+                                <button onClick={() => setPropertyTaxMode('custom')} className={`flex-1 p-2 text-sm rounded-r-md ${propertyTaxMode === 'custom' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}>Annen kommune</button>
+                            </div>
+                        </div>
+                        {propertyTaxMode === 'custom' && (
+                            <InputSlider label="Eiendomsskatt (‰)" value={customPropertyTaxRate} onChange={e => setCustomPropertyTaxRate(Number(e.target.value))} min={0} max={10} step={0.1} format="permille" />
+                        )}
+                        <div className="bg-gray-100 p-3 rounded-lg">
+                            <p className="text-sm text-gray-600">Beregnet årlig eiendomsskatt</p>
+                            <p className="font-bold text-lg text-gray-800">{formatCurrency(propertyTax)}</p>
+                        </div>
                     </div>
 
                     <div className="lg:col-span-2 space-y-8">
@@ -313,6 +358,7 @@ const InputSlider = ({ label, value, onChange, min, max, step, format }) => (
             <span className="text-sm font-semibold text-gray-700 w-36 text-right">
                 {format === 'currency' ? formatCurrency(value) : 
                  format === 'years' ? `${value} år` : 
+                 format === 'permille' ? `${value}‰` : 
                  `${value} %`}
             </span>
         </div>

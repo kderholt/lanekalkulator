@@ -36,8 +36,14 @@ npm start
 npm run build
 ```
 
-### Deploy til GitHub Pages
+## Deployment
+
+Applikasjonen er konfigurert for deployment til `https://lanekalkulator.kjetil.ro`.
+
+### Bygg for produksjon
 ```bash
-npm run deploy
+npm run build
 ```
+
+Deploy `build/` mappen til din web server eller hosting provider.
 
