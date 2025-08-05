@@ -5,7 +5,7 @@ import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearSca
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, PointElement, LineElement, Title);
 
 // Property tax calculation
-const calculatePropertyTax = (propertyValue, mode, customRate) => {
+const calculatePropertyTax = (propertyValue, mode, customAmount) => {
     if (propertyValue <= 0) return 0;
     
     if (mode === 'oslo') {
@@ -13,8 +13,8 @@ const calculatePropertyTax = (propertyValue, mode, customRate) => {
         const taxableBase = Math.max(0, (propertyValue * 0.7) - 4700000);
         return taxableBase * 0.00235;
     } else {
-        // Custom rate in ‰ (per mille)
-        return propertyValue * (customRate / 1000);
+        // Custom fixed amount in NOK
+        return customAmount;
     }
 };
 
@@ -37,7 +37,7 @@ const App = () => {
     
     // Property tax settings
     const [propertyTaxMode, setPropertyTaxMode] = useState('oslo'); // 'oslo' or 'custom'
-    const [customPropertyTaxRate, setCustomPropertyTaxRate] = useState(2.0);
+    const [customPropertyTaxAmount, setCustomPropertyTaxAmount] = useState(5000);
 
     // Mode-specific inputs
     const [desiredMonthlyPayment, setDesiredMonthlyPayment] = useState(20000);
@@ -58,6 +58,76 @@ const App = () => {
 
     // Effect to recalculate on input changes
     useEffect(() => {
+        // Affordability calculation logic
+        const calculateAffordability = (totalDownPayment) => {
+            if (desiredMonthlyPayment <= 0 || interestRate <= 0 || loanTerm <= 0) {
+                return { maxLoan: 0, maxPropertyPrice: totalDownPayment };
+            }
+            
+            const monthlyInterestRate = interestRate / 100 / 12;
+            const numberOfPayments = loanTerm * 12;
+            
+            // For affordability calculation, we need to estimate property tax based on desired payment
+            // We'll use a rough estimate and iterate if needed
+            let estimatedPropertyValue = desiredMonthlyPayment * 200; // rough estimate
+            let estimatedPropertyTax = calculatePropertyTax(estimatedPropertyValue, propertyTaxMode, customPropertyTaxAmount);
+            
+            const otherCosts = (municipalDues / 12) + (homeInsurance / 12) + (estimatedPropertyTax / 12) + hoa;
+            const pAndI = desiredMonthlyPayment + Number(rentalIncome) - otherCosts;
+
+            if (pAndI <= 0) {
+               return { maxLoan: 0, maxPropertyPrice: totalDownPayment };
+            }
+            
+            let maxLoan = 0;
+            if (loanType === 'annuity') {
+                 maxLoan = pAndI * ((Math.pow(1 + monthlyInterestRate, numberOfPayments) - 1) / (monthlyInterestRate * Math.pow(1 + monthlyInterestRate, numberOfPayments)));
+            } else { // Serial loan
+                maxLoan = pAndI / ((1/numberOfPayments) + monthlyInterestRate);
+            }
+            
+            maxLoan = maxLoan > 0 ? maxLoan : 0;
+            return { maxLoan, maxPropertyPrice: maxLoan + totalDownPayment };
+        };
+
+        // Helper function to calculate details for a single loan amount
+        const calculateLoanDetails = (amount) => {
+            if (amount <= 0) return { firstMonthPayment: 0, totalInterestPaid: 0, amortization: [] };
+
+            const monthlyInterestRate = interestRate / 100 / 12;
+            const numberOfPayments = loanTerm * 12;
+            
+            let balance = amount;
+            const amortization = [];
+            let totalInterestPaid = 0;
+            let firstMonthPayment = 0;
+
+            if (loanType === 'annuity') {
+                const M = amount * (monthlyInterestRate * Math.pow(1 + monthlyInterestRate, numberOfPayments)) / (Math.pow(1 + monthlyInterestRate, numberOfPayments) - 1);
+                firstMonthPayment = M;
+                for (let i = 1; i <= numberOfPayments; i++) {
+                    if (balance <= 0) break;
+                    const interestPayment = balance * monthlyInterestRate;
+                    const principalPayment = M - interestPayment;
+                    balance -= principalPayment;
+                    totalInterestPaid += interestPayment;
+                    amortization.push({ month: i, principal: principalPayment, interest: interestPayment, balance: balance < 0 ? 0 : balance, totalPayment: M });
+                }
+            } else { // Serial Loan
+                const principalPerMonth = amount / numberOfPayments;
+                for (let i = 1; i <= numberOfPayments; i++) {
+                    if (balance <= 0) break;
+                    const interestPayment = balance * monthlyInterestRate;
+                    const totalPaymentThisMonth = principalPerMonth + interestPayment;
+                    if (i === 1) firstMonthPayment = totalPaymentThisMonth;
+                    balance -= principalPerMonth;
+                    totalInterestPaid += interestPayment;
+                    amortization.push({ month: i, principal: principalPerMonth, interest: interestPayment, balance: balance < 0 ? 0 : balance, totalPayment: totalPaymentThisMonth });
+                }
+            }
+            return { firstMonthPayment, totalInterestPaid, amortization };
+        };
+
         const totalDownPayment = downPayment1 + downPayment2;
         let currentLoanAmount = 0;
         let currentPropertyValue = 0;
@@ -117,10 +187,10 @@ const App = () => {
         }
 
         // Calculate property tax
-        const calculatedPropertyTax = calculatePropertyTax(currentPropertyValue, propertyTaxMode, customPropertyTaxRate);
+        const calculatedPropertyTax = calculatePropertyTax(currentPropertyValue, propertyTaxMode, customPropertyTaxAmount);
         setPropertyTax(calculatedPropertyTax);
 
-    }, [calculationMode, desiredMonthlyPayment, propertyValue, interestRate, loanTerm, downPayment1, downPayment2, municipalDues, homeInsurance, hoa, rentalIncome, loanType, ownershipSplit, propertyTaxMode, customPropertyTaxRate]);
+    }, [calculationMode, desiredMonthlyPayment, propertyValue, interestRate, loanTerm, downPayment1, downPayment2, municipalDues, homeInsurance, hoa, rentalIncome, loanType, ownershipSplit, propertyTaxMode, customPropertyTaxAmount]);
     
     // Update total costs whenever calculated payments change
     useEffect(() => {
@@ -139,76 +209,6 @@ const App = () => {
 
     }, [calculatedMonthlyPayment, municipalDues, homeInsurance, hoa, rentalIncome, loanAmount, amortizationData, propertyTax]);
 
-
-    // Affordability calculation logic
-    const calculateAffordability = (totalDownPayment) => {
-        if (desiredMonthlyPayment <= 0 || interestRate <= 0 || loanTerm <= 0) {
-            return { maxLoan: 0, maxPropertyPrice: totalDownPayment };
-        }
-        
-        const monthlyInterestRate = interestRate / 100 / 12;
-        const numberOfPayments = loanTerm * 12;
-        
-        // For affordability calculation, we need to estimate property tax based on desired payment
-        // We'll use a rough estimate and iterate if needed
-        let estimatedPropertyValue = desiredMonthlyPayment * 200; // rough estimate
-        let estimatedPropertyTax = calculatePropertyTax(estimatedPropertyValue, propertyTaxMode, customPropertyTaxRate);
-        
-        const otherCosts = (municipalDues / 12) + (homeInsurance / 12) + (estimatedPropertyTax / 12) + hoa;
-        const pAndI = desiredMonthlyPayment + Number(rentalIncome) - otherCosts;
-
-        if (pAndI <= 0) {
-           return { maxLoan: 0, maxPropertyPrice: totalDownPayment };
-        }
-        
-        let maxLoan = 0;
-        if (loanType === 'annuity') {
-             maxLoan = pAndI * ((Math.pow(1 + monthlyInterestRate, numberOfPayments) - 1) / (monthlyInterestRate * Math.pow(1 + monthlyInterestRate, numberOfPayments)));
-        } else { // Serial loan
-            maxLoan = pAndI / ((1/numberOfPayments) + monthlyInterestRate);
-        }
-        
-        maxLoan = maxLoan > 0 ? maxLoan : 0;
-        return { maxLoan, maxPropertyPrice: maxLoan + totalDownPayment };
-    };
-
-    // Helper function to calculate details for a single loan amount
-    const calculateLoanDetails = (amount) => {
-        if (amount <= 0) return { firstMonthPayment: 0, totalInterestPaid: 0, amortization: [] };
-
-        const monthlyInterestRate = interestRate / 100 / 12;
-        const numberOfPayments = loanTerm * 12;
-        
-        let balance = amount;
-        const amortization = [];
-        let totalInterestPaid = 0;
-        let firstMonthPayment = 0;
-
-        if (loanType === 'annuity') {
-            const M = amount * (monthlyInterestRate * Math.pow(1 + monthlyInterestRate, numberOfPayments)) / (Math.pow(1 + monthlyInterestRate, numberOfPayments) - 1);
-            firstMonthPayment = M;
-            for (let i = 1; i <= numberOfPayments; i++) {
-                if (balance <= 0) break;
-                const interestPayment = balance * monthlyInterestRate;
-                const principalPayment = M - interestPayment;
-                balance -= principalPayment;
-                totalInterestPaid += interestPayment;
-                amortization.push({ month: i, principal: principalPayment, interest: interestPayment, balance: balance < 0 ? 0 : balance, totalPayment: M });
-            }
-        } else { // Serial Loan
-            const principalPerMonth = amount / numberOfPayments;
-            for (let i = 1; i <= numberOfPayments; i++) {
-                if (balance <= 0) break;
-                const interestPayment = balance * monthlyInterestRate;
-                const totalPaymentThisMonth = principalPerMonth + interestPayment;
-                if (i === 1) firstMonthPayment = totalPaymentThisMonth;
-                balance -= principalPerMonth;
-                totalInterestPaid += interestPayment;
-                amortization.push({ month: i, principal: principalPerMonth, interest: interestPayment, balance: balance < 0 ? 0 : balance, totalPayment: totalPaymentThisMonth });
-            }
-        }
-        return { firstMonthPayment, totalInterestPaid, amortization };
-    };
 
     const totalDownPayment = downPayment1 + downPayment2;
     const downPaymentPercentage1 = totalDownPayment > 0 ? (downPayment1 / totalDownPayment) * 100 : 0;
@@ -289,7 +289,7 @@ const App = () => {
                             </div>
                         </div>
                         {propertyTaxMode === 'custom' && (
-                            <InputSlider label="Eiendomsskatt (‰)" value={customPropertyTaxRate} onChange={e => setCustomPropertyTaxRate(Number(e.target.value))} min={0} max={10} step={0.1} format="permille" />
+                            <InputSlider label="Årlig eiendomsskatt (kr)" value={customPropertyTaxAmount} onChange={e => setCustomPropertyTaxAmount(Number(e.target.value))} min={0} max={100000} step={1000} format="currency" />
                         )}
                         <div className="bg-gray-100 p-3 rounded-lg">
                             <p className="text-sm text-gray-600">Beregnet årlig eiendomsskatt</p>
