@@ -14,7 +14,7 @@ const App = () => {
     const [interestRate, setInterestRate] = useState(5.5);
     const [loanTerm, setLoanTerm] = useState(25);
     const [downPayment1, setDownPayment1] = useState(2000000);
-    const [downPayment2, setDownPayment2] = useState(8000000);
+    const [downPayment2, setDownPayment2] = useState(0);
     const [ownershipSplit, setOwnershipSplit] = useState(50);
     const [municipalDues, setMunicipalDues] = useState(15000);
     const [homeInsurance, setHomeInsurance] = useState(5000);
@@ -23,7 +23,7 @@ const App = () => {
 
     // Mode-specific inputs
     const [desiredMonthlyPayment, setDesiredMonthlyPayment] = useState(20000);
-    const [propertyValue, setPropertyValue] = useState(8000000);
+    const [propertyValue, setPropertyValue] = useState(5000000);
 
     // Calculated Outputs
     const [loanAmount, setLoanAmount] = useState(0);
@@ -221,7 +221,7 @@ const App = () => {
                             </div>
                         ) : (
                              <div>
-                                <InputSlider label="Ønsket Boligpris" value={propertyValue} onChange={e => setPropertyValue(Number(e.target.value))} min={500000} max={20000000} step={50000} format="currency" />
+                                <InputSlider label="Ønsket Boligpris" value={propertyValue} onChange={e => setPropertyValue(Number(e.target.value))} min={500000} max={30000000} step={50000} format="currency" />
                                 <div className="mt-6 pt-6 border-t">
                                     <SummaryBox label="Nødvendig Månedlig Betaling" value={calculatedMonthlyPayment} format="currency" color="text-purple-600" isLarge={true} />
                                     <SummaryBox label="Nødvendig Lånebeløp" value={loanAmount} format="currency" color="text-indigo-600" isLarge={true} />
@@ -241,8 +241,8 @@ const App = () => {
                         <InputSlider label="Løpetid (År)" value={loanTerm} onChange={e => setLoanTerm(Number(e.target.value))} min={1} max={40} step={1} />
 
                         <h3 className="text-xl font-semibold text-gray-700 mt-8 mb-4 border-b pb-2">Fordeling</h3>
-                        <InputSlider label="Din Egenkapital" value={downPayment1} onChange={e => setDownPayment1(Number(e.target.value))} min={0} max={7500000} step={10000} format="currency" />
-                        <InputSlider label="Medlåntakers Egenkapital" value={downPayment2} onChange={e => setDownPayment2(Number(e.target.value))} min={0} max={7500000} step={10000} format="currency" />
+                        <InputSlider label="Din Egenkapital" value={downPayment1} onChange={e => setDownPayment1(Number(e.target.value))} min={0} max={17500000} step={10000} format="currency" />
+                        <InputSlider label="Medlåntakers Egenkapital" value={downPayment2} onChange={e => setDownPayment2(Number(e.target.value))} min={0} max={17500000} step={10000} format="currency" />
                         <InputSlider label="Ønsket Eierandel (Din andel %)" value={ownershipSplit} onChange={e => setOwnershipSplit(Number(e.target.value))} min={0} max={100} step={1} format="percent" />
 
                         <h3 className="text-xl font-semibold text-gray-700 mt-8 mb-4 border-b pb-2">Faste Kostnader & Inntekt</h3>
