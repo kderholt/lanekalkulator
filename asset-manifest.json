@@ -1,0 +1,15 @@
+{
+  "files": {
+    "main.css": "/lanekalulator/static/css/main.1a02f36e.css",
+    "main.js": "/lanekalulator/static/js/main.32fdbdec.js",
+    "static/js/453.57e3cb2e.chunk.js": "/lanekalulator/static/js/453.57e3cb2e.chunk.js",
+    "index.html": "/lanekalulator/index.html",
+    "main.1a02f36e.css.map": "/lanekalulator/static/css/main.1a02f36e.css.map",
+    "main.32fdbdec.js.map": "/lanekalulator/static/js/main.32fdbdec.js.map",
+    "453.57e3cb2e.chunk.js.map": "/lanekalulator/static/js/453.57e3cb2e.chunk.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.1a02f36e.css",
+    "static/js/main.32fdbdec.js"
+  ]
+}
