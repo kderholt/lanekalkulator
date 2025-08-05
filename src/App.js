@@ -35,6 +35,7 @@ const App = () => {
     const [hoa, setHoa] = useState(0);
     const [maintenance, setMaintenance] = useState(24000);
     const [annualAppreciation, setAnnualAppreciation] = useState(3.0);
+    const [requiredReturn, setRequiredReturn] = useState(5.0);
     const [rentalIncome, setRentalIncome] = useState(0);
     
     // Property tax settings
@@ -187,7 +188,7 @@ const App = () => {
         const calculatedPropertyTax = calculatePropertyTax(currentPropertyValue, propertyTaxMode, customPropertyTaxAmount);
         setPropertyTax(calculatedPropertyTax);
 
-    }, [calculationMode, desiredMonthlyPayment, propertyValue, interestRate, loanTerm, downPayment1, downPayment2, municipalDues, homeInsurance, hoa, maintenance, annualAppreciation, rentalIncome, loanType, ownershipSplit, propertyTaxMode, customPropertyTaxAmount]);
+    }, [calculationMode, desiredMonthlyPayment, propertyValue, interestRate, loanTerm, downPayment1, downPayment2, municipalDues, homeInsurance, hoa, maintenance, annualAppreciation, requiredReturn, rentalIncome, loanType, ownershipSplit, propertyTaxMode, customPropertyTaxAmount]);
     
     // Update total costs whenever calculated payments change
     useEffect(() => {
@@ -216,6 +217,46 @@ const App = () => {
     const futurePropertyValue = finalPropertyValue * Math.pow(1 + (annualAppreciation / 100), yearsToPayoff);
     const totalEquityGain = futurePropertyValue - finalPropertyValue;
     const annualEquityReturn = totalDownPayment > 0 ? (totalEquityGain / totalDownPayment / yearsToPayoff) * 100 : 0;
+
+    // Calculate Return on Equity (RoE) and Net Present Value (NPV) analysis for leveraged investment
+    const totalAnnualCosts = municipalDues + homeInsurance + propertyTax + maintenance;
+    const totalCostOverLife = totalInterest + (totalAnnualCosts * yearsToPayoff);
+    
+    // For leveraged investment, we only consider the equity invested, not total costs
+    // Net cash flow from property investment including rental income
+    const totalRentalIncome = rentalIncome * 12 * yearsToPayoff;
+    const netCashFromProperty = futurePropertyValue - loanAmount - totalCostOverLife + totalRentalIncome;
+    
+    // Return on Equity: What annual return did we get on our invested equity?
+    const returnOnEquity = totalDownPayment > 0 && netCashFromProperty > 0
+        ? (Math.pow((totalDownPayment + netCashFromProperty) / totalDownPayment, 1 / yearsToPayoff) - 1) * 100 
+        : 0;
+    
+    // Net Present Value: How much extra do we make compared to alternative investment?
+    
+    // Calculate present value of all rental income streams year by year
+    let presentValueOfRentalIncome = 0;
+    const annualRentalIncome = rentalIncome * 12;
+    for (let year = 1; year <= yearsToPayoff; year++) {
+        presentValueOfRentalIncome += annualRentalIncome / Math.pow(1 + (requiredReturn / 100), year);
+    }
+    
+    // Present value of property investment components
+    const presentValueOfFuturePropertyValue = futurePropertyValue / Math.pow(1 + (requiredReturn / 100), yearsToPayoff);
+    const presentValueOfLoanPayback = loanAmount / Math.pow(1 + (requiredReturn / 100), yearsToPayoff);
+    const presentValueOfCosts = totalCostOverLife / Math.pow(1 + (requiredReturn / 100), yearsToPayoff);
+    
+    // Total present value of property investment
+    const totalPresentValueOfPropertyInvestment = presentValueOfFuturePropertyValue + presentValueOfRentalIncome - presentValueOfLoanPayback - presentValueOfCosts;
+    
+    // NPV = Present value of property investment minus initial equity investment
+    const netPresentValue = totalPresentValueOfPropertyInvestment - totalDownPayment;
+    
+    // Present value of future property sale (for display purposes)
+    const presentValueOfFutureSale = futurePropertyValue / Math.pow(1 + (requiredReturn / 100), yearsToPayoff);
+    
+    // Investment recommendation
+    const isGoodInvestment = returnOnEquity >= requiredReturn && netPresentValue > 0;
 
     // Chart Data
     const amortizationChartData = {
@@ -283,6 +324,7 @@ const App = () => {
                         <InputSlider label="Boligforsikring (kr/år)" value={homeInsurance} onChange={e => setHomeInsurance(Number(e.target.value))} min={0} max={50000} step={500} format="currency" />
                         <InputSlider label="Felleskostnader (kr/mnd)" value={hoa} onChange={e => setHoa(Number(e.target.value))} min={0} max={20000} step={250} format="currency" />
                         <InputSlider label="Forventet prisendring (% per år)" value={annualAppreciation} onChange={e => setAnnualAppreciation(Number(e.target.value))} min={-10} max={15} step={0.1} format="percent" />
+                        <InputSlider label="Avkastningskrav (% per år)" value={requiredReturn} onChange={e => setRequiredReturn(Number(e.target.value))} min={1} max={15} step={0.1} format="percent" />
                         <InputSlider label="Utleieinntekt (kr/mnd)" value={rentalIncome} onChange={e => setRentalIncome(Number(e.target.value))} min={0} max={30000} step={500} format="currency" />
                         
                         <h3 className="text-xl font-semibold text-gray-700 mt-8 mb-4 border-b pb-2">Eiendomsskatt</h3>
@@ -335,6 +377,27 @@ const App = () => {
                                 <SummaryBox label="Boligverdi ved nedbetaling" value={futurePropertyValue} format="currency" />
                                 <SummaryBox label="Forventet egenkapitalgevinst" value={totalEquityGain} format="currency" />
                                 <SummaryBox label="Årlig egenkapitalavkastning" value={`${annualEquityReturn.toFixed(1)}%`} />
+                                <SummaryBox 
+                                    label="Avkastning på egenkapital (RoE)" 
+                                    value={`${returnOnEquity.toFixed(1)}%`} 
+                                    color={returnOnEquity >= requiredReturn ? "text-green-600" : "text-red-600"} 
+                                />
+                                <SummaryBox 
+                                    label="Nåverdi av investering" 
+                                    value={presentValueOfFutureSale} 
+                                    format="currency" 
+                                />
+                                <SummaryBox 
+                                    label="Netto nåverdi (NPV)" 
+                                    value={netPresentValue} 
+                                    format="currency" 
+                                    color={netPresentValue > 0 ? "text-green-600" : "text-red-600"} 
+                                />
+                                <SummaryBox 
+                                    label="Investeringsvurdering" 
+                                    value={isGoodInvestment ? "Anbefalt" : "Ikke anbefalt"} 
+                                    color={isGoodInvestment ? "text-green-600" : "text-red-600"} 
+                                />
                             </div>
                         </div>
 
