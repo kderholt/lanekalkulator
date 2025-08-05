@@ -15,7 +15,7 @@ const App = () => {
     const [loanTerm, setLoanTerm] = useState(25);
     const [downPayment1, setDownPayment1] = useState(2000000);
     const [downPayment2, setDownPayment2] = useState(0);
-    const [ownershipSplit, setOwnershipSplit] = useState(50);
+    const [ownershipSplit, setOwnershipSplit] = useState(100);
     const [municipalDues, setMunicipalDues] = useState(15000);
     const [homeInsurance, setHomeInsurance] = useState(5000);
     const [hoa, setHoa] = useState(0);
@@ -238,7 +238,7 @@ const App = () => {
                             </div>
                         </div>
                         <InputSlider label="Rente (%)" value={interestRate} onChange={e => setInterestRate(Number(e.target.value))} min={0.1} max={20} step={0.01} format="percent" />
-                        <InputSlider label="Løpetid (År)" value={loanTerm} onChange={e => setLoanTerm(Number(e.target.value))} min={1} max={40} step={1} />
+                        <InputSlider label="Løpetid (År)" value={loanTerm} onChange={e => setLoanTerm(Number(e.target.value))} min={1} max={40} step={1} format="years" />
 
                         <h3 className="text-xl font-semibold text-gray-700 mt-8 mb-4 border-b pb-2">Fordeling</h3>
                         <InputSlider label="Din Egenkapital" value={downPayment1} onChange={e => setDownPayment1(Number(e.target.value))} min={0} max={17500000} step={10000} format="currency" />
@@ -310,7 +310,11 @@ const InputSlider = ({ label, value, onChange, min, max, step, format }) => (
         <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
         <div className="flex items-center space-x-4">
             <input type="range" min={min} max={max} step={step} value={value} onChange={onChange} className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer" />
-            <span className="text-sm font-semibold text-gray-700 w-36 text-right">{format === 'currency' ? formatCurrency(value) : `${value} %`}</span>
+            <span className="text-sm font-semibold text-gray-700 w-36 text-right">
+                {format === 'currency' ? formatCurrency(value) : 
+                 format === 'years' ? `${value} år` : 
+                 `${value} %`}
+            </span>
         </div>
     </div>
 );
