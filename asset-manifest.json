@@ -1,15 +1,15 @@
 {
   "files": {
     "main.css": "/lanekalkulator/static/css/main.1a02f36e.css",
-    "main.js": "/lanekalkulator/static/js/main.a8ba821f.js",
+    "main.js": "/lanekalkulator/static/js/main.e1185050.js",
     "static/js/453.57e3cb2e.chunk.js": "/lanekalkulator/static/js/453.57e3cb2e.chunk.js",
     "index.html": "/lanekalkulator/index.html",
     "main.1a02f36e.css.map": "/lanekalkulator/static/css/main.1a02f36e.css.map",
-    "main.a8ba821f.js.map": "/lanekalkulator/static/js/main.a8ba821f.js.map",
+    "main.e1185050.js.map": "/lanekalkulator/static/js/main.e1185050.js.map",
     "453.57e3cb2e.chunk.js.map": "/lanekalkulator/static/js/453.57e3cb2e.chunk.js.map"
   },
   "entrypoints": [
     "static/css/main.1a02f36e.css",
-    "static/js/main.a8ba821f.js"
+    "static/js/main.e1185050.js"
   ]
 }
