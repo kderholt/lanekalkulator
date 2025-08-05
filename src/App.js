@@ -21,18 +21,20 @@ const calculatePropertyTax = (propertyValue, mode, customAmount) => {
 // Main App Component
 const App = () => {
     // State for calculation mode
-    const [calculationMode, setCalculationMode] = useState('byPayment'); // 'byPayment' or 'byPrice'
+    const [calculationMode, setCalculationMode] = useState('byPrice'); // 'byPayment' or 'byPrice'
 
     // Inputs
     const [loanType, setLoanType] = useState('annuity');
-    const [interestRate, setInterestRate] = useState(5.5);
+    const [interestRate, setInterestRate] = useState(5.2);
     const [loanTerm, setLoanTerm] = useState(25);
-    const [downPayment1, setDownPayment1] = useState(2000000);
+    const [downPayment1, setDownPayment1] = useState(1000000);
     const [downPayment2, setDownPayment2] = useState(0);
     const [ownershipSplit, setOwnershipSplit] = useState(100);
     const [municipalDues, setMunicipalDues] = useState(15000);
-    const [homeInsurance, setHomeInsurance] = useState(5000);
+    const [homeInsurance, setHomeInsurance] = useState(0);
     const [hoa, setHoa] = useState(0);
+    const [maintenance, setMaintenance] = useState(24000);
+    const [annualAppreciation, setAnnualAppreciation] = useState(3.0);
     const [rentalIncome, setRentalIncome] = useState(0);
     
     // Property tax settings
@@ -185,11 +187,11 @@ const App = () => {
         const calculatedPropertyTax = calculatePropertyTax(currentPropertyValue, propertyTaxMode, customPropertyTaxAmount);
         setPropertyTax(calculatedPropertyTax);
 
-    }, [calculationMode, desiredMonthlyPayment, propertyValue, interestRate, loanTerm, downPayment1, downPayment2, municipalDues, homeInsurance, hoa, rentalIncome, loanType, ownershipSplit, propertyTaxMode, customPropertyTaxAmount]);
+    }, [calculationMode, desiredMonthlyPayment, propertyValue, interestRate, loanTerm, downPayment1, downPayment2, municipalDues, homeInsurance, hoa, maintenance, annualAppreciation, rentalIncome, loanType, ownershipSplit, propertyTaxMode, customPropertyTaxAmount]);
     
     // Update total costs whenever calculated payments change
     useEffect(() => {
-        const monthlyFixedCosts = (municipalDues / 12) + (homeInsurance / 12) + (propertyTax / 12) + hoa;
+        const monthlyFixedCosts = (municipalDues / 12) + (homeInsurance / 12) + (propertyTax / 12) + (maintenance / 12) + hoa;
         const totalCost = calculatedMonthlyPayment + monthlyFixedCosts;
         setTotalMonthlyCost(totalCost);
         setNetMonthlyCost(totalCost - rentalIncome);
@@ -202,12 +204,18 @@ const App = () => {
            setPayoffDate('N/A');
         }
 
-    }, [calculatedMonthlyPayment, municipalDues, homeInsurance, hoa, rentalIncome, loanAmount, amortizationData, propertyTax]);
+    }, [calculatedMonthlyPayment, municipalDues, homeInsurance, hoa, maintenance, rentalIncome, loanAmount, amortizationData, propertyTax]);
 
 
     const totalDownPayment = downPayment1 + downPayment2;
     const downPaymentPercentage1 = totalDownPayment > 0 ? (downPayment1 / totalDownPayment) * 100 : 0;
     const downPaymentPercentage2 = totalDownPayment > 0 ? (downPayment2 / totalDownPayment) * 100 : 0;
+
+    // Calculate future property value and equity gains
+    const yearsToPayoff = amortizationData.length > 0 ? amortizationData.length / 12 : loanTerm;
+    const futurePropertyValue = finalPropertyValue * Math.pow(1 + (annualAppreciation / 100), yearsToPayoff);
+    const totalEquityGain = futurePropertyValue - finalPropertyValue;
+    const annualEquityReturn = totalDownPayment > 0 ? (totalEquityGain / totalDownPayment / yearsToPayoff) * 100 : 0;
 
     // Chart Data
     const amortizationChartData = {
@@ -215,8 +223,8 @@ const App = () => {
         datasets: [{ label: 'Gjenværende Lånebalanse', data: amortizationData.map(d => d.balance), borderColor: 'rgb(75, 192, 192)', backgroundColor: 'rgba(75, 192, 192, 0.2)', fill: true, tension: 0.1, }],
     };
     const paymentBreakdownChartData = {
-        labels: ['Avdrag & Renter', 'Kommunale Avgifter', 'Eiendomsskatt', 'Boligforsikring', 'Felleskostnader'],
-        datasets: [ { data: [ calculatedMonthlyPayment, (municipalDues / 12), (propertyTax / 12), (homeInsurance / 12), hoa ].map(v => v > 0 ? v : 0), backgroundColor: ['#4CAF50', '#FFC107', '#FF5722', '#9C27B0', '#2196F3'], hoverBackgroundColor: ['#66BB6A', '#FFCA28', '#FF7043', '#BA68C8', '#42A5F5'],}],
+        labels: ['Avdrag & Renter', 'Kommunale Avgifter', 'Eiendomsskatt', 'Boligforsikring', 'Vedlikehold', 'Felleskostnader'],
+        datasets: [ { data: [ calculatedMonthlyPayment, (municipalDues / 12), (propertyTax / 12), (homeInsurance / 12), (maintenance / 12), hoa ].map(v => v > 0 ? v : 0), backgroundColor: ['#4CAF50', '#FFC107', '#FF5722', '#9C27B0', '#FF9800', '#2196F3'], hoverBackgroundColor: ['#66BB6A', '#FFCA28', '#FF7043', '#BA68C8', '#FFB74D', '#42A5F5'],}],
     };
 
     return (
@@ -273,6 +281,8 @@ const App = () => {
                         <InputSlider label="Kommunale Avgifter (kr/år)" value={municipalDues} onChange={e => setMunicipalDues(Number(e.target.value))} min={0} max={100000} step={1000} format="currency" />
                         <InputSlider label="Boligforsikring (kr/år)" value={homeInsurance} onChange={e => setHomeInsurance(Number(e.target.value))} min={0} max={50000} step={500} format="currency" />
                         <InputSlider label="Felleskostnader (kr/mnd)" value={hoa} onChange={e => setHoa(Number(e.target.value))} min={0} max={20000} step={250} format="currency" />
+                        <InputSlider label="Vedlikehold (kr/år)" value={maintenance} onChange={e => setMaintenance(Number(e.target.value))} min={0} max={100000} step={1000} format="currency" />
+                        <InputSlider label="Forventet prisendring (% per år)" value={annualAppreciation} onChange={e => setAnnualAppreciation(Number(e.target.value))} min={-10} max={15} step={0.1} format="percent" />
                         <InputSlider label="Utleieinntekt (kr/mnd)" value={rentalIncome} onChange={e => setRentalIncome(Number(e.target.value))} min={0} max={30000} step={500} format="currency" />
                         
                         <h3 className="text-xl font-semibold text-gray-700 mt-8 mb-4 border-b pb-2">Eiendomsskatt</h3>
@@ -322,6 +332,9 @@ const App = () => {
                                 <SummaryBox label="Total Lånekostnad" value={loanAmount + totalInterest} format="currency" />
                                 <SummaryBox label="Nedbetalingsdato" value={payoffDate} />
                                 <SummaryBox label="Total Egenkapitalandel" value={finalPropertyValue > 0 ? `${((totalDownPayment / finalPropertyValue) * 100).toFixed(1)}%` : '0%'} />
+                                <SummaryBox label="Boligverdi ved nedbetaling" value={futurePropertyValue} format="currency" />
+                                <SummaryBox label="Forventet egenkapitalgevinst" value={totalEquityGain} format="currency" />
+                                <SummaryBox label="Årlig egenkapitalavkastning" value={`${annualEquityReturn.toFixed(1)}%`} />
                             </div>
                         </div>
 
@@ -344,21 +357,51 @@ const App = () => {
     );
 };
 
-// Helper component for input sliders
-const InputSlider = ({ label, value, onChange, min, max, step, format }) => (
-    <div className="mb-4">
-        <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
-        <div className="flex items-center space-x-4">
-            <input type="range" min={min} max={max} step={step} value={value} onChange={onChange} className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer" />
-            <span className="text-sm font-semibold text-gray-700 w-36 text-right">
-                {format === 'currency' ? formatCurrency(value) : 
-                 format === 'years' ? `${value} år` : 
-                 format === 'permille' ? `${value}‰` : 
-                 `${value} %`}
-            </span>
+// Helper component for input sliders with both slider and number input
+const InputSlider = ({ label, value, onChange, min, max, step, format }) => {
+    const handleNumberChange = (e) => {
+        const newValue = Number(e.target.value);
+        if (!isNaN(newValue)) {
+            onChange({ target: { value: newValue } });
+        }
+    };
+
+    const formatValue = (val) => {
+        if (format === 'currency') return formatCurrency(val);
+        if (format === 'years') return `${val} år`;
+        if (format === 'permille') return `${val}‰`;
+        return `${val} %`;
+    };
+
+    return (
+        <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+            <div className="flex items-center space-x-4">
+                <input 
+                    type="range" 
+                    min={min} 
+                    max={max} 
+                    step={step} 
+                    value={value} 
+                    onChange={onChange} 
+                    className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer" 
+                />
+                <input
+                    type="number"
+                    min={min}
+                    max={max}
+                    step={step}
+                    value={value}
+                    onChange={handleNumberChange}
+                    className="w-32 px-2 py-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <span className="text-sm font-semibold text-gray-700 w-20 text-right">
+                    {format === 'currency' ? 'kr' : format === 'years' ? 'år' : format === 'permille' ? '‰' : '%'}
+                </span>
+            </div>
         </div>
-    </div>
-);
+    );
+};
 
 // Helper component for summary boxes
 const SummaryBox = ({ label, value, format, color = 'text-gray-800', isLarge = false }) => (
