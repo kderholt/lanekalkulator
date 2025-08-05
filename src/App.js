@@ -138,7 +138,13 @@ const App = () => {
             currentPropertyValue = maxPropertyPrice;
         } else { // 'byPrice'
             currentPropertyValue = propertyValue;
-            currentLoanAmount = Math.max(0, propertyValue - totalDownPayment);
+            // Calculate how much equity can actually be used based on ownership shares
+            const ownershipValue1 = propertyValue * (ownershipSplit / 100);
+            const ownershipValue2 = propertyValue * ((100 - ownershipSplit) / 100);
+            const usableEquity1 = Math.min(downPayment1, ownershipValue1);
+            const usableEquity2 = Math.min(downPayment2, ownershipValue2);
+            const totalUsableEquity = usableEquity1 + usableEquity2;
+            currentLoanAmount = Math.max(0, propertyValue - totalUsableEquity);
         }
 
         setLoanAmount(currentLoanAmount);
@@ -159,18 +165,7 @@ const App = () => {
             let loan1_needed = ownershipValue1 - downPayment1;
             let loan2_needed = ownershipValue2 - downPayment2;
 
-            // Handle cases where one person's equity is more than their share value
-            if (loan1_needed < 0) {
-                // Person 1 has excess equity. Apply it to person 2's loan.
-                loan2_needed += loan1_needed; // loan1_needed is negative, so this is subtraction
-                loan1_needed = 0;
-            }
-            if (loan2_needed < 0) {
-                // Person 2 has excess equity. Apply it to person 1's loan.
-                loan1_needed += loan2_needed; // loan2_needed is negative, so this is subtraction
-                loan2_needed = 0;
-            }
-            
+            // Each person is only responsible for their own ownership share
             const finalLoan1 = Math.max(0, loan1_needed);
             const finalLoan2 = Math.max(0, loan2_needed);
 
