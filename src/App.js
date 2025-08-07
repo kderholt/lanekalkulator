@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Line, Pie } from 'react-chartjs-2';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, PointElement, LineElement, Title } from 'chart.js';
 
@@ -20,6 +20,22 @@ const calculatePropertyTax = (propertyValue, mode, customAmount) => {
 const App = () => {
     // State for calculation mode
     const [calculationMode, setCalculationMode] = useState('byPrice'); // 'byPayment' or 'byPrice'
+    
+    // State for collapsible sections
+    const [expandedSections, setExpandedSections] = useState({
+        distribution: false,
+        costs: false,
+        propertyTax: false,
+        investmentAnalysis: false,
+        details: false
+    });
+    
+    const toggleSection = (section) => {
+        setExpandedSections(prev => ({
+            ...prev,
+            [section]: !prev[section]
+        }));
+    };
 
     // Inputs
     const [loanType, setLoanType] = useState('annuity');
@@ -35,6 +51,7 @@ const App = () => {
     const [annualAppreciation, setAnnualAppreciation] = useState(3.0);
     const [requiredReturn, setRequiredReturn] = useState(5.0);
     const [rentalIncome, setRentalIncome] = useState(0);
+    const [alternativeRentCost, setAlternativeRentCost] = useState(20000); // Ny input for klassisk sammenligning
 
     // Property tax settings
     const [propertyTaxMode, setPropertyTaxMode] = useState('oslo'); // 'oslo' or 'custom'
@@ -61,7 +78,7 @@ const App = () => {
     useEffect(() => {
         // FIX 3: Replaced the simple estimation with an iterative calculation for better accuracy
         const calculateAffordability = (totalDownPayment) => {
-            if (desiredMonthlyPayment <= 0 || interestRate <= 0 || loanTerm <= 0) {
+            if (desiredMonthlyPayment <= 0 || interestRate <= 0 || loanTerm <= 0 || !isFinite(desiredMonthlyPayment) || !isFinite(interestRate) || !isFinite(loanTerm)) {
                 return { maxLoan: 0, maxPropertyPrice: totalDownPayment };
             }
 
@@ -139,21 +156,13 @@ const App = () => {
         };
 
         const totalDownPayment = downPayment1 + downPayment2;
-        let currentLoanAmount = 0;
         let currentPropertyValue = 0;
 
         if (calculationMode === 'byPayment') {
-            const { maxLoan, maxPropertyPrice } = calculateAffordability(totalDownPayment);
-            currentLoanAmount = maxLoan;
+            const { maxPropertyPrice } = calculateAffordability(totalDownPayment);
             currentPropertyValue = maxPropertyPrice;
         } else { // 'byPrice'
             currentPropertyValue = propertyValue;
-            // The logic for splitting loans based on ownership is kept as per your model
-            const ownershipValue1 = propertyValue * (ownershipSplit / 100);
-            const loan1_needed = Math.max(0, ownershipValue1 - downPayment1);
-            const ownershipValue2 = propertyValue * ((100 - ownershipSplit) / 100);
-            const loan2_needed = Math.max(0, ownershipValue2 - downPayment2);
-            currentLoanAmount = loan1_needed + loan2_needed;
         }
 
         setFinalPropertyValue(currentPropertyValue);
@@ -230,9 +239,9 @@ const App = () => {
     const totalEquityGain = futurePropertyValue - finalPropertyValue;
 
     // FIX 2: Complete rewrite of NPV and related financial metrics for correctness
-    const calculateAdvancedMetrics = () => {
+    const calculateAdvancedMetrics = useMemo(() => {
         if (yearsToPayoff <= 0 || !amortizationData || amortizationData.length === 0) {
-            return { netPresentValue: 0, returnOnEquity: 0 };
+            return { netPresentValue: 0, returnOnEquity: 0, totalPropertyReturn: 0, totalAlternativeReturn: 0, investmentAdvantage: 0, presentValueOfPropertyInvestment: 0, presentValueOfFutureSale: 0, presentValueOfRentalIncome: 0, presentValueOfCosts: 0, remainingDebt: 0, netWorthWithProperty: 0, realPropertyGain: 0, pureAlternativeReturn: 0, pureInvestmentAdvantage: 0, totalPaidIn: 0, classicRentVsBuyAdvantage: 0, totalRentVsBuyWealth: 0 };
         }
 
         const annualCosts = municipalDues + homeInsurance + propertyTax + maintenance + (hoa * 12);
@@ -258,9 +267,42 @@ const App = () => {
             ? (Math.pow((totalDownPayment + netProfit) / totalDownPayment, 1 / yearsToPayoff) - 1) * 100
             : 0;
 
-        // Total return comparisons - what you end up with after the investment period
-        const totalPropertyReturn = futurePropertyValue - loanAmount + (annualRentalIncome * yearsToPayoff) - (annualCosts * yearsToPayoff) - totalInterest;
-        const totalAlternativeReturn = totalDownPayment * Math.pow(1 + (requiredReturn / 100), yearsToPayoff);
+        // Beregn restgjeld etter X år
+        const remainingDebt = amortizationData.length > 0 && amortizationData[amortizationData.length - 1] 
+            ? amortizationData[amortizationData.length - 1].balance 
+            : 0;
+        
+        // Netto formue fra boligkjøp = Boligverdi - Restgjeld
+        const netWorthWithProperty = futurePropertyValue - remainingDebt;
+        
+        // Hva har du faktisk betalt inn over årene?
+        const totalPaidIn = totalDownPayment + totalInterest + (loanAmount - remainingDebt) + 
+                           ((municipalDues + homeInsurance + propertyTax + maintenance + (hoa * 12)) * yearsToPayoff) -
+                           (rentalIncome * 12 * yearsToPayoff);
+        
+        // Din reelle gevinst fra boligkjøp
+        const realPropertyGain = netWorthWithProperty - totalPaidIn;
+        
+        // Ren investeringssammenligning - kun egenkapital
+        const pureAlternativeReturn = totalDownPayment * Math.pow(1 + (requiredReturn / 100), yearsToPayoff);
+        const pureInvestmentAdvantage = realPropertyGain - (pureAlternativeReturn - totalDownPayment);
+        
+        // Alternativ: Hvis du hadde spart samme månedlige beløp
+        // Start med egenkapital, legg til månedlig sparing med rente
+        const monthlyTotalCost = calculatedMonthlyPayment + (municipalDues/12) + (homeInsurance/12) + 
+                                (propertyTax/12) + (maintenance/12) + hoa - rentalIncome;
+        
+        // Beregn fremtidig verdi av månedlig sparing (annuitet)
+        const r = requiredReturn / 100 / 12; // månedlig rente
+        const n = yearsToPayoff * 12; // antall måneder
+        const futureValueOfMonthlySavings = r > 0 ? monthlyTotalCost * ((Math.pow(1 + r, n) - 1) / r) : monthlyTotalCost * n;
+        
+        // Total alternativ formue = egenkapital med rente + månedlig sparing med rente
+        const totalAlternativeWealth = totalDownPayment * Math.pow(1 + (requiredReturn / 100), yearsToPayoff) + futureValueOfMonthlySavings;
+        
+        // Sammenlign formue
+        const totalPropertyReturn = netWorthWithProperty;
+        const totalAlternativeReturn = totalAlternativeWealth;
         const investmentAdvantage = totalPropertyReturn - totalAlternativeReturn;
 
         // Separate present value components for detailed breakdown
@@ -279,8 +321,23 @@ const App = () => {
 
         // Present value comparisons - what both investments are worth in today's money
         const presentValueOfPropertyInvestment = presentValueOfAllCashFlows + presentValueOfFutureSale;
-        const presentValueOfAlternativeInvestment = totalDownPayment; // Since invested today
-        const presentValueDifference = presentValueOfPropertyInvestment - presentValueOfAlternativeInvestment;
+
+        // Klassisk leie vs kjøpe sammenligning
+        // Hvis du leier til alternativeRentCost per måned og investerer differansen
+        const monthlySavingsIfRenting = totalMonthlyCost - alternativeRentCost; // Hva du sparer per måned ved å leie
+        
+        // Beregn formue hvis du leier og investerer differansen
+        let totalRentVsBuyWealth = totalDownPayment * Math.pow(1 + (requiredReturn / 100), yearsToPayoff); // Egenkapital investert
+        
+        // Hvis du sparer penger ved å leie (dvs. leie er billigere enn å eie)
+        if (monthlySavingsIfRenting > 0) {
+            const r = requiredReturn / 100 / 12;
+            const n = yearsToPayoff * 12;
+            const futureValueOfSavings = r > 0 ? monthlySavingsIfRenting * ((Math.pow(1 + r, n) - 1) / r) : monthlySavingsIfRenting * n;
+            totalRentVsBuyWealth += futureValueOfSavings;
+        }
+        
+        const classicRentVsBuyAdvantage = netWorthWithProperty - totalRentVsBuyWealth;
 
         return { 
             netPresentValue, 
@@ -289,28 +346,34 @@ const App = () => {
             totalAlternativeReturn, 
             investmentAdvantage,
             presentValueOfPropertyInvestment,
-            presentValueOfAlternativeInvestment,
-            presentValueDifference,
             presentValueOfFutureSale,
             presentValueOfRentalIncome,
-            presentValueOfCosts
+            presentValueOfCosts,
+            remainingDebt,
+            netWorthWithProperty,
+            realPropertyGain,
+            pureAlternativeReturn,
+            pureInvestmentAdvantage,
+            totalPaidIn,
+            classicRentVsBuyAdvantage,
+            totalRentVsBuyWealth
         };
-    };
+    }, [yearsToPayoff, amortizationData, municipalDues, homeInsurance, propertyTax, maintenance, hoa, rentalIncome, requiredReturn, futurePropertyValue, totalDownPayment, totalInterest, loanAmount, calculatedMonthlyPayment, totalMonthlyCost, alternativeRentCost]);
 
     const { 
-        netPresentValue, 
-        returnOnEquity, 
         totalPropertyReturn, 
         totalAlternativeReturn, 
         investmentAdvantage,
-        presentValueOfPropertyInvestment,
-        presentValueOfAlternativeInvestment,
-        presentValueDifference,
         presentValueOfFutureSale,
         presentValueOfRentalIncome,
-        presentValueOfCosts
-    } = calculateAdvancedMetrics();
-    const isGoodInvestment = returnOnEquity >= requiredReturn && netPresentValue > 0;
+        remainingDebt,
+        realPropertyGain,
+        pureAlternativeReturn,
+        pureInvestmentAdvantage,
+        totalPaidIn,
+        classicRentVsBuyAdvantage,
+        totalRentVsBuyWealth
+    } = calculateAdvancedMetrics;
 
     // Chart Data
     const amortizationChartData = {
@@ -333,44 +396,52 @@ const App = () => {
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                     <div className="lg:col-span-1 bg-white p-6 rounded-xl shadow-lg">
                         <h2 className="text-2xl font-semibold text-gray-700 mb-4 border-b pb-3">Kalkuleringsmåte</h2>
-                        <div className="flex rounded-md shadow-sm mb-6">
-                            <button onClick={() => setCalculationMode('byPayment')} className={`flex-1 p-2 text-sm rounded-l-md ${calculationMode === 'byPayment' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}>Finn boligpris fra månedsbeløp</button>
-                            <button onClick={() => setCalculationMode('byPrice')} className={`flex-1 p-2 text-sm rounded-r-md ${calculationMode === 'byPrice' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}>Finn månedsbeløp fra boligpris</button>
+                        <div className="flex flex-col sm:flex-row rounded-md shadow-sm mb-6 gap-2 sm:gap-0">
+                            <button onClick={() => setCalculationMode('byPayment')} className={`flex-1 p-3 sm:p-2 text-sm sm:rounded-l-md rounded-md ${calculationMode === 'byPayment' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}>Finn boligpris fra månedsbeløp</button>
+                            <button onClick={() => setCalculationMode('byPrice')} className={`flex-1 p-3 sm:p-2 text-sm sm:rounded-r-md rounded-md ${calculationMode === 'byPrice' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}>Finn månedsbeløp fra boligpris</button>
                         </div>
 
                         {calculationMode === 'byPayment' ? (
                             <div>
                                 <InputSlider label="Ønsket Månedlig Betaling (Totalt)" value={desiredMonthlyPayment} onChange={e => setDesiredMonthlyPayment(Number(e.target.value))} min={1000} max={100000} step={1000} format="currency" />
-                                <div className="mt-6 pt-6 border-t">
-                                    <SummaryBox label="Maksimal Boligpris" value={finalPropertyValue} format="currency" color="text-purple-600" isLarge={true} />
-                                    <SummaryBox label="Tilhørende Lånebeløp" value={loanAmount} format="currency" color="text-indigo-600" isLarge={true} />
-                                </div>
                             </div>
                         ) : (
                             <div>
                                 <InputSlider label="Ønsket Boligpris" value={propertyValue} onChange={e => setPropertyValue(Number(e.target.value))} min={500000} max={30000000} step={50000} format="currency" />
-                                <div className="mt-6 pt-6 border-t">
-                                    <SummaryBox label="Nødvendig Månedlig Betaling" value={calculatedMonthlyPayment} format="currency" color="text-purple-600" isLarge={true} />
-                                    <SummaryBox label="Nødvendig Lånebeløp" value={loanAmount} format="currency" color="text-indigo-600" isLarge={true} />
-                                </div>
                             </div>
                         )}
+
+                        <h3 className="text-xl font-semibold text-gray-700 mt-6 mb-4 border-b pb-2">Fordeling</h3>
+                        <InputSlider label="Din Egenkapital" value={downPayment1} onChange={e => setDownPayment1(Number(e.target.value))} min={0} max={17500000} step={10000} format="currency" />
+                        <InputSlider label="Medlåntakers Egenkapital" value={downPayment2} onChange={e => setDownPayment2(Number(e.target.value))} min={0} max={17500000} step={10000} format="currency" />
+                        <InputSlider label="Ønsket Eierandel (Din andel %)" value={ownershipSplit} onChange={e => setOwnershipSplit(Number(e.target.value))} min={0} max={100} step={1} format="percent" />
 
                         <h3 className="text-xl font-semibold text-gray-700 mt-8 mb-4 border-b pb-2">Lånebetingelser</h3>
                         <div className="mb-4">
                             <label className="block text-sm font-medium text-gray-700 mb-2">Lånetype</label>
-                            <div className="flex rounded-md shadow-sm">
-                                <button onClick={() => setLoanType('annuity')} className={`flex-1 p-2 rounded-l-md ${loanType === 'annuity' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}>Annuitetslån</button>
-                                <button onClick={() => setLoanType('serial')} className={`flex-1 p-2 rounded-r-md ${loanType === 'serial' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}>Serielån</button>
+                            <div className="flex rounded-md shadow-sm" role="group" aria-label="Velg lånetype">
+                                <button onClick={() => setLoanType('annuity')} className={`flex-1 p-2 rounded-l-md ${loanType === 'annuity' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`} aria-pressed={loanType === 'annuity'}>Annuitetslån</button>
+                                <button onClick={() => setLoanType('serial')} className={`flex-1 p-2 rounded-r-md ${loanType === 'serial' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`} aria-pressed={loanType === 'serial'}>Serielån</button>
                             </div>
                         </div>
                         <InputSlider label="Rente (%)" value={interestRate} onChange={e => setInterestRate(Number(e.target.value))} min={0.1} max={20} step={0.01} format="percent" />
                         <InputSlider label="Løpetid (År)" value={loanTerm} onChange={e => setLoanTerm(Number(e.target.value))} min={1} max={40} step={1} format="years" />
-
-                        <h3 className="text-xl font-semibold text-gray-700 mt-8 mb-4 border-b pb-2">Fordeling</h3>
-                        <InputSlider label="Din Egenkapital" value={downPayment1} onChange={e => setDownPayment1(Number(e.target.value))} min={0} max={17500000} step={10000} format="currency" />
-                        <InputSlider label="Medlåntakers Egenkapital" value={downPayment2} onChange={e => setDownPayment2(Number(e.target.value))} min={0} max={17500000} step={10000} format="currency" />
-                        <InputSlider label="Ønsket Eierandel (Din andel %)" value={ownershipSplit} onChange={e => setOwnershipSplit(Number(e.target.value))} min={0} max={100} step={1} format="percent" />
+        
+                        {calculationMode === 'byPayment' ? (
+                            <div className="mt-6 pt-6 border-t bg-blue-50 p-4 rounded-lg">
+                                <h4 className="font-semibold text-gray-700 mb-2">Resultat:</h4>
+                                <SummaryBox label="Maksimal Boligpris" value={finalPropertyValue} format="currency" color="text-purple-600" isLarge={true} />
+                                <SummaryBox label="Total Månedlig Kostnad" value={totalMonthlyCost} format="currency" color="text-purple-600" isLarge={true} />
+                                <SummaryBox label="Tilhørende Lånebeløp" value={loanAmount} format="currency" color="text-indigo-600" isLarge={true} />
+                            </div>
+                        ) : (
+                            <div className="mt-6 pt-6 border-t bg-blue-50 p-4 rounded-lg">
+                                <h4 className="font-semibold text-gray-700 mb-2">Resultat:</h4>
+                                <SummaryBox label="Total Månedlig Kostnad" value={totalMonthlyCost} format="currency" color="text-purple-600" isLarge={true} />
+                                <SummaryBox label="Netto Månedlig Kostnad" value={netMonthlyCost} format="currency" color="text-purple-600" isLarge={true} />
+                                <SummaryBox label="Nødvendig Lånebeløp" value={loanAmount} format="currency" color="text-indigo-600" isLarge={true} />
+                            </div>
+                        )}
 
                         <h3 className="text-xl font-semibold text-gray-700 mt-8 mb-4 border-b pb-2">Faste Kostnader & Inntekt</h3>
                         <InputSlider label="Kommunale Avgifter (kr/år)" value={municipalDues} onChange={e => setMunicipalDues(Number(e.target.value))} min={0} max={100000} step={1000} format="currency" />
@@ -421,87 +492,230 @@ const App = () => {
 
                         <div className="bg-white p-6 rounded-xl shadow-lg">
                             <h2 className="text-2xl font-semibold text-gray-700 mb-4">Totalsammendrag</h2>
-                            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-center">
-                                <SummaryBox label="Total Månedlig Kostnad (1. mnd)" value={totalMonthlyCost} format="currency" />
-                                <SummaryBox label="Netto Månedlig Kostnad (1. mnd)" value={netMonthlyCost} format="currency" />
-                                <SummaryBox label="Total Rentekostnad" value={totalInterest} format="currency" />
-                                <SummaryBox label="Total Lånekostnad" value={loanAmount + totalInterest} format="currency" />
-                                <SummaryBox label="Nedbetalingsdato" value={payoffDate} />
-                                <SummaryBox label="Total Egenkapitalandel" value={finalPropertyValue > 0 ? `${((totalDownPayment / finalPropertyValue) * 100).toFixed(1)}%` : '0%'} />
-                                <SummaryBox label="Boligverdi ved nedbetaling" value={futurePropertyValue} format="currency" />
-                                <SummaryBox label="Forventet egenkapitalgevinst" value={totalEquityGain} format="currency" />
-                                <SummaryBox
-                                    label="Avkastning på egenkapital (RoE)"
-                                    value={`${returnOnEquity.toFixed(1)}%`}
-                                    color={returnOnEquity >= requiredReturn ? "text-green-600" : "text-red-600"}
+                            
+                            {/* Primær informasjon - alltid synlig */}
+                            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-center mb-6">
+                                <SummaryBox 
+                                    label="Total Månedlig Kostnad" 
+                                    value={totalMonthlyCost} 
+                                    format="currency" 
+                                    color="text-blue-600"
+                                    isLarge={true}
                                 />
+                                <SummaryBox 
+                                    label="Netto Månedlig Kostnad" 
+                                    value={netMonthlyCost} 
+                                    format="currency" 
+                                    color="text-blue-600"
+                                    isLarge={true}
+                                    tooltip="Etter utleieinntekt"
+                                />
+                                <SummaryBox 
+                                    label="Nedbetalingsdato" 
+                                    value={payoffDate} 
+                                    color="text-gray-700"
+                                    isLarge={true}
+                                />
+                                <SummaryBox 
+                                    label="Total Egenkapitalandel" 
+                                    value={finalPropertyValue > 0 ? `${((totalDownPayment / finalPropertyValue) * 100).toFixed(1)}%` : '0%'} 
+                                    color="text-green-600"
+                                />
+                                <SummaryBox 
+                                    label="Boligverdi ved nedbetaling" 
+                                    value={futurePropertyValue} 
+                                    format="currency" 
+                                    color="text-green-600"
+                                />
+                                <SummaryBox 
+                                    label="Forventet verdiøkning" 
+                                    value={totalEquityGain} 
+                                    format="currency" 
+                                    color="text-green-600"
+                                />
+                                <SummaryBox 
+                                    label="Nåverdi av bolig" 
+                                    value={presentValueOfFutureSale} 
+                                    format="currency" 
+                                    tooltip="Hva boligens fremtidige verdi er verdt i dagens penger"
+                                />
+                            </div>
+
+                            {/* Kollapsbar detaljer seksjon */}
+                            <div className="border-t pt-4">
+                                <button
+                                    onClick={() => toggleSection('details')}
+                                    className="w-full flex justify-between items-center text-md font-medium text-gray-600 hover:text-gray-800 p-2 rounded hover:bg-gray-100"
+                                    aria-expanded={expandedSections.details}
+                                >
+                                    <span>📄 Detaljer</span>
+                                    <span className="text-xl">{expandedSections.details ? '−' : '+'}</span>
+                                </button>
                                 
-                                <div className="col-span-full">
-                                    <h4 className="text-lg font-semibold text-gray-700 mt-6 mb-3 border-b pb-2">Del 1: Nåverdi-analyse (Er det en god deal i dag?)</h4>
-                                </div>
+                                {expandedSections.details && (
+                                    <div className="mt-4 grid grid-cols-2 md:grid-cols-3 gap-4">
+                                        <SummaryBox 
+                                            label="Total Rentekostnad" 
+                                            value={totalInterest} 
+                                            format="currency" 
+                                        />
+                                        <SummaryBox 
+                                            label="Total Lånekostnad" 
+                                            value={loanAmount + totalInterest} 
+                                            format="currency" 
+                                        />
+                                        <SummaryBox 
+                                            label="Månedlig lånebetaling" 
+                                            value={calculatedMonthlyPayment} 
+                                            format="currency" 
+                                        />
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Kollapsbar investeringsanalyse */}
+                            <div className="border-t pt-4 mt-4">
+                                <button
+                                    onClick={() => toggleSection('investmentAnalysis')}
+                                    className="w-full flex justify-between items-center text-md font-medium text-gray-600 hover:text-gray-800 p-2 rounded hover:bg-gray-100"
+                                    aria-expanded={expandedSections.investmentAnalysis}
+                                >
+                                    <span>💰 Investeringsanalyse</span>
+                                    <span className="text-xl">{expandedSections.investmentAnalysis ? '−' : '+'}</span>
+                                </button>
                                 
-                                <SummaryBox
-                                    label="Nåverdi av boligsalg"
-                                    value={presentValueOfFutureSale}
-                                    format="currency"
-                                />
-                                <SummaryBox
-                                    label="Nåverdi av utleieinntekter"
-                                    value={presentValueOfRentalIncome}
-                                    format="currency"
-                                />
-                                <SummaryBox
-                                    label="Nåverdi av kostnader"
-                                    value={-presentValueOfCosts}
-                                    format="currency"
-                                    color="text-red-600"
-                                />
-                                <SummaryBox
-                                    label="(=) Nåverdi av boligprosjektet"
-                                    value={presentValueOfPropertyInvestment}
-                                    format="currency"
-                                />
-                                <SummaryBox
-                                    label="(-) Startkostnad (din egenkapital)"
-                                    value={-totalDownPayment}
-                                    format="currency"
-                                    color="text-red-600"
-                                />
-                                <SummaryBox
-                                    label="(=) Netto nåverdi (NPV)"
-                                    value={netPresentValue}
-                                    format="currency"
-                                    color={netPresentValue > 0 ? "text-green-600" : "text-red-600"}
-                                />
-                                
-                                <div className="col-span-full">
-                                    <h4 className="text-lg font-semibold text-gray-700 mt-6 mb-3 border-b pb-2">Del 2: Sluttverdi-analyse (Hvem har mest penger om {yearsToPayoff} år?)</h4>
-                                </div>
-                                
-                                <SummaryBox
-                                    label="Sluttverdi fra boliginvestering"
-                                    value={totalPropertyReturn}
-                                    format="currency"
-                                />
-                                <SummaryBox
-                                    label={`Sluttverdi fra alternativ (${requiredReturn}%)`}
-                                    value={totalAlternativeReturn}
-                                    format="currency"
-                                />
-                                <SummaryBox
-                                    label="(=) Økonomisk fordel fra bolig"
-                                    value={investmentAdvantage}
-                                    format="currency"
-                                    color={investmentAdvantage > 0 ? "text-green-600" : "text-red-600"}
-                                />
-                                
-                                <div className="col-span-full">
-                                    <SummaryBox
-                                    label="Investeringsvurdering"
-                                    value={isGoodInvestment ? "Anbefalt" : "Ikke anbefalt"}
-                                    color={isGoodInvestment ? "text-green-600" : "text-red-600"}
-                                    />
-                                </div>
+                                {expandedSections.investmentAnalysis && (
+                                    <div className="mt-4 bg-gradient-to-br from-gray-50 to-gray-100 p-6 rounded-xl border border-gray-200">
+                                        
+                                        {/* Klassisk leie vs kjøpe */}
+                                        <div className="mb-6">
+                                            <h5 className="text-md font-medium text-gray-700 mb-3">🏠 Klassisk situasjon: Leie vs Kjøpe</h5>
+                                            <div className="mb-3">
+                                                <label className="text-sm text-gray-600">Hva koster det å leie tilsvarende bolig? (kr/mnd)</label>
+                                                <input
+                                                    type="number"
+                                                    value={alternativeRentCost}
+                                                    onChange={(e) => setAlternativeRentCost(Number(e.target.value))}
+                                                    className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                    placeholder="20000"
+                                                />
+                                            </div>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
+                                                <div className="bg-white p-4 rounded-lg">
+                                                    <p className="text-sm text-gray-600 mb-1">Nettoformue ved kjøp</p>
+                                                    <p className="text-2xl font-bold text-gray-800">{formatCurrency(totalPropertyReturn)}</p>
+                                                    <p className="text-xs text-gray-500 mt-1">Bolig minus gjeld etter {Math.round(yearsToPayoff)} år</p>
+                                                </div>
+                                                <div className="bg-white p-4 rounded-lg">
+                                                    <p className="text-sm text-gray-600 mb-1">Formue ved å leie og investere</p>
+                                                    <p className="text-2xl font-bold text-gray-800">{formatCurrency(totalRentVsBuyWealth)}</p>
+                                                    <p className="text-xs text-gray-500 mt-1">Leie {formatCurrency(alternativeRentCost)}/mnd, investere resten</p>
+                                                </div>
+                                            </div>
+                                            <div className={`p-3 rounded-lg ${classicRentVsBuyAdvantage > 0 ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
+                                                <p className={`text-sm ${classicRentVsBuyAdvantage > 0 ? 'text-green-700' : 'text-red-700'}`}>
+                                                    {classicRentVsBuyAdvantage > 0 
+                                                        ? `✓ Boligkjøp gir ${formatCurrency(classicRentVsBuyAdvantage)} høyere formue enn å leie`
+                                                        : `✗ Å leie og investere gir ${formatCurrency(Math.abs(classicRentVsBuyAdvantage))} høyere formue`
+                                                    }
+                                                </p>
+                                                {totalMonthlyCost - alternativeRentCost > 0 && (
+                                                    <p className="text-xs text-gray-600 mt-1">
+                                                        Ved å leie sparer du {formatCurrency(Math.round(totalMonthlyCost - alternativeRentCost))}/mnd som kan investeres
+                                                    </p>
+                                                )}
+                                                {totalMonthlyCost - alternativeRentCost < 0 && (
+                                                    <p className="text-xs text-gray-600 mt-1">
+                                                        Å eie koster {formatCurrency(Math.round(Math.abs(totalMonthlyCost - alternativeRentCost)))} mer per måned enn å leie
+                                                    </p>
+                                                )}
+                                            </div>
+                                        </div>
+                                        
+                                        {/* Sammenligning 1: Ren investering */}
+                                        <div className="mb-6">
+                                            <h5 className="text-md font-medium text-gray-700 mb-3">💰 Ren investeringsgevinst</h5>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
+                                                <div className="bg-white p-4 rounded-lg">
+                                                    <p className="text-sm text-gray-600 mb-1">Gevinst fra boligkjøp</p>
+                                                    <p className="text-2xl font-bold text-gray-800">{formatCurrency(realPropertyGain)}</p>
+                                                    <p className="text-xs text-gray-500 mt-1">Boligverdi minus alt du har betalt ({formatCurrency(totalPaidIn)})</p>
+                                                </div>
+                                                <div className="bg-white p-4 rounded-lg">
+                                                    <p className="text-sm text-gray-600 mb-1">Gevinst fra å investere egenkapital ({requiredReturn}%)</p>
+                                                    <p className="text-2xl font-bold text-gray-800">{formatCurrency(pureAlternativeReturn - totalDownPayment)}</p>
+                                                    <p className="text-xs text-gray-500 mt-1">Kun {formatCurrency(totalDownPayment)} investert</p>
+                                                </div>
+                                            </div>
+                                            <div className={`p-3 rounded-lg ${pureInvestmentAdvantage > 0 ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
+                                                <p className={`text-sm ${pureInvestmentAdvantage > 0 ? 'text-green-700' : 'text-red-700'}`}>
+                                                    {pureInvestmentAdvantage > 0 
+                                                        ? `✓ Boligkjøpet gir ${formatCurrency(pureInvestmentAdvantage)} høyere gevinst`
+                                                        : `✗ Investering gir ${formatCurrency(Math.abs(pureInvestmentAdvantage))} høyere gevinst`
+                                                    }
+                                                </p>
+                                            </div>
+                                        </div>
+                                        
+                                        {/* Sammenligning 2: Total formue */}
+                                        <div className="mb-6">
+                                            <h5 className="text-md font-medium text-gray-700 mb-3">🏦 Total formue (hvis du sparer alt)</h5>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
+                                                <div className="bg-white p-4 rounded-lg">
+                                                    <p className="text-sm text-gray-600 mb-1">Nettoformue med bolig</p>
+                                                    <p className="text-2xl font-bold text-gray-800">{formatCurrency(totalPropertyReturn)}</p>
+                                                    <p className="text-xs text-gray-500 mt-1">Boligverdi ({formatCurrency(futurePropertyValue)}) - Restgjeld ({formatCurrency(remainingDebt)})</p>
+                                                </div>
+                                                <div className="bg-white p-4 rounded-lg">
+                                                    <p className="text-sm text-gray-600 mb-1">Formue hvis du sparte {formatCurrency(Math.round(calculatedMonthlyPayment + (municipalDues/12) + (homeInsurance/12) + (propertyTax/12) + (maintenance/12) + hoa))}/mnd</p>
+                                                    <p className="text-2xl font-bold text-gray-800">{formatCurrency(totalAlternativeReturn)}</p>
+                                                    <p className="text-xs text-gray-500 mt-1">Med {requiredReturn}% årlig avkastning</p>
+                                                </div>
+                                            </div>
+                                            <div className={`p-3 rounded-lg ${investmentAdvantage > 0 ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
+                                                <p className={`text-sm ${investmentAdvantage > 0 ? 'text-green-700' : 'text-red-700'}`}>
+                                                    {investmentAdvantage > 0 
+                                                        ? `✓ Boligkjøpet gir ${formatCurrency(investmentAdvantage)} høyere formue`
+                                                        : `✗ Sparing gir ${formatCurrency(Math.abs(investmentAdvantage))} høyere formue`
+                                                    }
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        {/* Detaljerte metrics */}
+                                        <div className="border-t pt-4">
+                                            <p className="text-sm text-gray-600 mb-3">Detaljerte beregninger:</p>
+                                            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                                                <SummaryBox
+                                                    label="Total investert"
+                                                    value={totalPaidIn}
+                                                    format="currency"
+                                                    tooltip="Alt du har betalt inn over perioden"
+                                                />
+                                                <SummaryBox
+                                                    label={`Boligverdi etter ${Math.round(yearsToPayoff)} år`}
+                                                    value={futurePropertyValue}
+                                                    format="currency"
+                                                />
+                                                <SummaryBox
+                                                    label="Reell gevinst"
+                                                    value={realPropertyGain}
+                                                    format="currency"
+                                                    color={realPropertyGain > 0 ? "text-green-600" : "text-red-600"}
+                                                    tooltip="Boligverdi minus alt du har betalt"
+                                                />
+                                                {rentalIncome > 0 && (
+                                                    <SummaryBox
+                                                        label="Nåverdi av utleieinntekter"
+                                                        value={presentValueOfRentalIncome}
+                                                        format="currency"
+                                                        tooltip="Hva fremtidige leieinntekter er verdt i dag"
+                                                    />
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
 
@@ -527,9 +741,27 @@ const App = () => {
 // Helper component for input sliders with both slider and number input
 const InputSlider = ({ label, value, onChange, min, max, step, format }) => {
     const handleNumberChange = (e) => {
+        const inputValue = e.target.value;
+        // Tillat tom streng eller tall
+        if (inputValue === '') {
+            onChange({ target: { value: 0 } });
+        } else {
+            const newValue = Number(inputValue);
+            if (!isNaN(newValue)) {
+                // Fjern min/max validering under skriving, la brukeren skrive fritt
+                onChange({ target: { value: newValue } });
+            }
+        }
+    };
+    
+    const handleBlur = (e) => {
+        // Valider og korriger ved blur (når feltet mister fokus)
         const newValue = Number(e.target.value);
         if (!isNaN(newValue)) {
-            onChange({ target: { value: newValue } });
+            const clampedValue = Math.min(Math.max(newValue, min), max);
+            if (clampedValue !== newValue) {
+                onChange({ target: { value: clampedValue } });
+            }
         }
     };
 
@@ -544,7 +776,8 @@ const InputSlider = ({ label, value, onChange, min, max, step, format }) => {
                     step={step}
                     value={value}
                     onChange={onChange}
-                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                    className="w-full h-3 sm:h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer touch-manipulation"
+                    aria-label={label}
                 />
                 <input
                     type="number"
@@ -553,6 +786,8 @@ const InputSlider = ({ label, value, onChange, min, max, step, format }) => {
                     step={step}
                     value={value}
                     onChange={handleNumberChange}
+                    onBlur={handleBlur}
+                    onFocus={(e) => e.target.select()}
                     className="w-32 px-2 py-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
             </div>
@@ -560,10 +795,25 @@ const InputSlider = ({ label, value, onChange, min, max, step, format }) => {
     );
 };
 
+// Helper component for tooltips
+const HelpTooltip = ({ text, children }) => (
+    <span className="relative inline-flex items-center group">
+        {children}
+        <svg className="w-4 h-4 ml-1 text-gray-400 cursor-help" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+        </svg>
+        <span className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 text-sm text-white bg-gray-800 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none whitespace-nowrap z-10">
+            {text}
+        </span>
+    </span>
+);
+
 // Helper component for summary boxes
-const SummaryBox = ({ label, value, format, color = 'text-gray-800', isLarge = false }) => (
+const SummaryBox = ({ label, value, format, color = 'text-gray-800', isLarge = false, tooltip }) => (
     <div className="bg-gray-100 p-3 rounded-lg mt-2">
-        <p className="text-sm text-gray-600">{label}</p>
+        <p className="text-sm text-gray-600">
+            {tooltip ? <HelpTooltip text={tooltip}>{label}</HelpTooltip> : label}
+        </p>
         <p className={`font-bold ${isLarge ? 'text-2xl' : 'text-xl'} ${color}`}>
             {format === 'currency' ? formatCurrency(value) : value}
         </p>
