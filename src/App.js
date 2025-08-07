@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Line, Pie } from 'react-chartjs-2';
-import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, PointElement, LineElement, Title } from 'chart.js';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { Line, Pie, Bar } from 'react-chartjs-2';
+import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, PointElement, LineElement, Title, BarElement } from 'chart.js';
 
-ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, PointElement, LineElement, Title);
+ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, PointElement, LineElement, Title, BarElement);
 
 // Property tax calculation
 const calculatePropertyTax = (propertyValue, mode, customAmount) => {
@@ -16,10 +16,34 @@ const calculatePropertyTax = (propertyValue, mode, customAmount) => {
     }
 };
 
+// URL parameter handling
+const encodeParams = (params) => {
+    const urlParams = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') {
+            urlParams.set(key, value.toString());
+        }
+    });
+    return urlParams.toString();
+};
+
+const decodeParams = () => {
+    const hash = window.location.hash.substring(1);
+    const params = new URLSearchParams(hash);
+    const result = {};
+    params.forEach((value, key) => {
+        result[key] = value;
+    });
+    return result;
+};
+
 // Main App Component
 const App = () => {
+    // Load initial state from URL if available
+    const urlParams = useMemo(() => decodeParams(), []);
+    
     // State for calculation mode
-    const [calculationMode, setCalculationMode] = useState('byPrice'); // 'byPayment' or 'byPrice'
+    const [calculationMode, setCalculationMode] = useState(urlParams.cm || 'byPrice'); // 'byPayment' or 'byPrice'
     
     // State for collapsible sections
     const [expandedSections, setExpandedSections] = useState({
@@ -37,29 +61,29 @@ const App = () => {
         }));
     };
 
-    // Inputs
-    const [loanType, setLoanType] = useState('annuity');
-    const [interestRate, setInterestRate] = useState(5.2);
-    const [loanTerm, setLoanTerm] = useState(25);
-    const [downPayment1, setDownPayment1] = useState(1000000);
-    const [downPayment2, setDownPayment2] = useState(0);
-    const [ownershipSplit, setOwnershipSplit] = useState(100);
-    const [municipalDues, setMunicipalDues] = useState(15000);
-    const [homeInsurance, setHomeInsurance] = useState(0);
-    const [hoa, setHoa] = useState(0);
-    const [maintenance, setMaintenance] = useState(24000);
-    const [annualAppreciation, setAnnualAppreciation] = useState(3.0);
-    const [requiredReturn, setRequiredReturn] = useState(5.0);
-    const [rentalIncome, setRentalIncome] = useState(0);
-    const [alternativeRentCost, setAlternativeRentCost] = useState(20000); // Ny input for klassisk sammenligning
+    // Inputs (with URL params as defaults)
+    const [loanType, setLoanType] = useState(urlParams.lt || 'annuity');
+    const [interestRate, setInterestRate] = useState(parseFloat(urlParams.ir) || 5.2);
+    const [loanTerm, setLoanTerm] = useState(parseInt(urlParams.term) || 25);
+    const [downPayment1, setDownPayment1] = useState(parseInt(urlParams.dp1) || 1000000);
+    const [downPayment2, setDownPayment2] = useState(parseInt(urlParams.dp2) || 0);
+    const [ownershipSplit, setOwnershipSplit] = useState(parseInt(urlParams.os) || 100);
+    const [municipalDues, setMunicipalDues] = useState(parseInt(urlParams.md) || 15000);
+    const [homeInsurance, setHomeInsurance] = useState(parseInt(urlParams.hi) || 0);
+    const [hoa, setHoa] = useState(parseInt(urlParams.hoa) || 0);
+    const [maintenance, setMaintenance] = useState(parseInt(urlParams.maint) || 24000);
+    const [annualAppreciation, setAnnualAppreciation] = useState(parseFloat(urlParams.aa) || 3.0);
+    const [requiredReturn, setRequiredReturn] = useState(parseFloat(urlParams.rr) || 5.0);
+    const [rentalIncome, setRentalIncome] = useState(parseInt(urlParams.ri) || 0);
+    const [alternativeRentCost, setAlternativeRentCost] = useState(parseInt(urlParams.arc) || 20000); // Ny input for klassisk sammenligning
 
     // Property tax settings
-    const [propertyTaxMode, setPropertyTaxMode] = useState('oslo'); // 'oslo' or 'custom'
-    const [customPropertyTaxAmount, setCustomPropertyTaxAmount] = useState(5000);
+    const [propertyTaxMode, setPropertyTaxMode] = useState(urlParams.ptm || 'oslo'); // 'oslo' or 'custom'
+    const [customPropertyTaxAmount, setCustomPropertyTaxAmount] = useState(parseInt(urlParams.cpt) || 5000);
 
     // Mode-specific inputs
-    const [desiredMonthlyPayment, setDesiredMonthlyPayment] = useState(20000);
-    const [propertyValue, setPropertyValue] = useState(5000000);
+    const [desiredMonthlyPayment, setDesiredMonthlyPayment] = useState(parseInt(urlParams.dmp) || 20000);
+    const [propertyValue, setPropertyValue] = useState(parseInt(urlParams.pv) || 5000000);
 
     // Calculated Outputs
     const [loanAmount, setLoanAmount] = useState(0);
@@ -70,9 +94,51 @@ const App = () => {
     const [totalMonthlyCost, setTotalMonthlyCost] = useState(0);
     const [netMonthlyCost, setNetMonthlyCost] = useState(0);
     const [totalInterest, setTotalInterest] = useState(0);
-    const [loanDetails1, setLoanDetails1] = useState({ amount: 0, payment: 0 });
-    const [loanDetails2, setLoanDetails2] = useState({ amount: 0, payment: 0 });
+    const [loanDetails1, setLoanDetails1] = useState({ amount: 0, payment: 0, amortization: [] });
+    const [loanDetails2, setLoanDetails2] = useState({ amount: 0, payment: 0, amortization: [] });
     const [propertyTax, setPropertyTax] = useState(0);
+    
+    // Update URL with current state
+    const updateURL = useCallback(() => {
+        const params = {
+            cm: calculationMode,
+            lt: loanType,
+            ir: interestRate,
+            term: loanTerm,
+            dp1: downPayment1,
+            dp2: downPayment2,
+            os: ownershipSplit,
+            md: municipalDues,
+            hi: homeInsurance,
+            hoa: hoa,
+            maint: maintenance,
+            aa: annualAppreciation,
+            rr: requiredReturn,
+            ri: rentalIncome,
+            arc: alternativeRentCost,
+            ptm: propertyTaxMode,
+            cpt: customPropertyTaxAmount,
+            dmp: desiredMonthlyPayment,
+            pv: propertyValue
+        };
+        
+        const hash = encodeParams(params);
+        window.location.hash = hash;
+    }, [
+        calculationMode, loanType, interestRate, loanTerm, downPayment1, downPayment2,
+        ownershipSplit, municipalDues, homeInsurance, hoa, maintenance, annualAppreciation,
+        requiredReturn, rentalIncome, alternativeRentCost, propertyTaxMode, customPropertyTaxAmount,
+        desiredMonthlyPayment, propertyValue
+    ]);
+    
+    // Debounced URL update
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            updateURL();
+        }, 500);
+        
+        return () => clearTimeout(timer);
+    }, [updateURL]);
 
     // Effect to recalculate on input changes
     useEffect(() => {
@@ -178,16 +244,16 @@ const App = () => {
 
         if (totalLoanAmount <= 0) {
             setCalculatedMonthlyPayment(0);
-            setLoanDetails1({ amount: 0, payment: 0 });
-            setLoanDetails2({ amount: 0, payment: 0 });
+            setLoanDetails1({ amount: 0, payment: 0, amortization: [] });
+            setLoanDetails2({ amount: 0, payment: 0, amortization: [] });
             setTotalInterest(0);
             setAmortizationData([]);
         } else {
             const details1 = calculateLoanDetails(finalLoan1);
             const details2 = calculateLoanDetails(finalLoan2);
 
-            setLoanDetails1({ amount: finalLoan1, payment: details1.firstMonthPayment });
-            setLoanDetails2({ amount: finalLoan2, payment: details2.firstMonthPayment });
+            setLoanDetails1({ amount: finalLoan1, payment: details1.firstMonthPayment, amortization: details1.amortization });
+            setLoanDetails2({ amount: finalLoan2, payment: details2.firstMonthPayment, amortization: details2.amortization });
             setTotalInterest(details1.totalInterestPaid + details2.totalInterestPaid);
             setCalculatedMonthlyPayment(details1.firstMonthPayment + details2.firstMonthPayment);
 
@@ -375,15 +441,117 @@ const App = () => {
         totalRentVsBuyWealth
     } = calculateAdvancedMetrics;
 
+    // Loan Type Comparison Calculation
+    const loanTypeComparison = useMemo(() => {
+        if (loanAmount <= 0) return null;
+        
+        const monthlyInterestRate = interestRate / 100 / 12;
+        const numberOfPayments = loanTerm * 12;
+        
+        // Calculate for Annuity loan
+        const annuityPayment = loanAmount * (monthlyInterestRate * Math.pow(1 + monthlyInterestRate, numberOfPayments)) / (Math.pow(1 + monthlyInterestRate, numberOfPayments) - 1);
+        let annuityTotalInterest = 0;
+        let annuityBalance = loanAmount;
+        const annuityMonthlyPayments = [];
+        
+        for (let i = 1; i <= numberOfPayments; i++) {
+            const interestPayment = annuityBalance * monthlyInterestRate;
+            const principalPayment = annuityPayment - interestPayment;
+            annuityBalance -= principalPayment;
+            annuityTotalInterest += interestPayment;
+            if (i === 1 || i === Math.floor(numberOfPayments/2) || i === numberOfPayments) {
+                annuityMonthlyPayments.push({ month: i, payment: annuityPayment, principal: principalPayment, interest: interestPayment });
+            }
+        }
+        
+        // Calculate for Serial loan
+        const serialPrincipalPayment = loanAmount / numberOfPayments;
+        let serialTotalInterest = 0;
+        let serialBalance = loanAmount;
+        const serialMonthlyPayments = [];
+        
+        for (let i = 1; i <= numberOfPayments; i++) {
+            const interestPayment = serialBalance * monthlyInterestRate;
+            const totalPayment = serialPrincipalPayment + interestPayment;
+            serialBalance -= serialPrincipalPayment;
+            serialTotalInterest += interestPayment;
+            if (i === 1 || i === Math.floor(numberOfPayments/2) || i === numberOfPayments) {
+                serialMonthlyPayments.push({ month: i, payment: totalPayment, principal: serialPrincipalPayment, interest: interestPayment });
+            }
+        }
+        
+        return {
+            annuity: {
+                totalInterest: annuityTotalInterest,
+                totalCost: loanAmount + annuityTotalInterest,
+                firstPayment: annuityPayment,
+                lastPayment: annuityPayment,
+                monthlyPayments: annuityMonthlyPayments
+            },
+            serial: {
+                totalInterest: serialTotalInterest,
+                totalCost: loanAmount + serialTotalInterest,
+                firstPayment: serialPrincipalPayment + (loanAmount * monthlyInterestRate),
+                lastPayment: serialPrincipalPayment + (serialPrincipalPayment * monthlyInterestRate),
+                monthlyPayments: serialMonthlyPayments
+            }
+        };
+    }, [loanAmount, interestRate, loanTerm]);
+
     // Chart Data
     const amortizationChartData = {
         labels: amortizationData.map(d => `Måned ${d.month}`),
         datasets: [{ label: 'Gjenværende Lånebalanse', data: amortizationData.map(d => d.balance), borderColor: 'rgb(75, 192, 192)', backgroundColor: 'rgba(75, 192, 192, 0.2)', fill: true, tension: 0.1, }],
     };
+    // Calculate percentages for payment breakdown
+    const paymentBreakdownData = [
+        { label: 'Avdrag & Renter', value: calculatedMonthlyPayment },
+        { label: 'Kommunale Avgifter', value: municipalDues / 12 },
+        { label: 'Eiendomsskatt', value: propertyTax / 12 },
+        { label: 'Boligforsikring', value: homeInsurance / 12 },
+        { label: 'Vedlikehold', value: maintenance / 12 },
+        { label: 'Felleskostnader', value: hoa }
+    ].filter(item => item.value > 0);
+    
+    const totalPaymentBreakdown = paymentBreakdownData.reduce((sum, item) => sum + item.value, 0);
+    
     const paymentBreakdownChartData = {
-        labels: ['Avdrag & Renter', 'Kommunale Avgifter', 'Eiendomsskatt', 'Boligforsikring', 'Vedlikehold', 'Felleskostnader'],
-        datasets: [ { data: [ calculatedMonthlyPayment, (municipalDues / 12), (propertyTax / 12), (homeInsurance / 12), (maintenance / 12), hoa ].map(v => v > 0 ? v : 0), backgroundColor: ['#4CAF50', '#FFC107', '#FF5722', '#9C27B0', '#FF9800', '#2196F3'], hoverBackgroundColor: ['#66BB6A', '#FFCA28', '#FF7043', '#BA68C8', '#FFB74D', '#42A5F5'],}],
+        labels: paymentBreakdownData.map(item => 
+            `${item.label} (${((item.value / totalPaymentBreakdown) * 100).toFixed(1)}%)`
+        ),
+        datasets: [{ 
+            data: paymentBreakdownData.map(item => item.value), 
+            backgroundColor: ['#4CAF50', '#FFC107', '#FF5722', '#9C27B0', '#FF9800', '#2196F3'], 
+            hoverBackgroundColor: ['#66BB6A', '#FFCA28', '#FF7043', '#BA68C8', '#FFB74D', '#42A5F5'],
+        }],
     };
+    
+    // Calculate principal vs interest for first payment
+    const firstPaymentPrincipal = amortizationData.length > 0 ? amortizationData[0].principal : 0;
+    const firstPaymentInterest = amortizationData.length > 0 ? amortizationData[0].interest : 0;
+    const principalPercentage = calculatedMonthlyPayment > 0 ? ((firstPaymentPrincipal / calculatedMonthlyPayment) * 100).toFixed(1) : 0;
+    const interestPercentage = calculatedMonthlyPayment > 0 ? ((firstPaymentInterest / calculatedMonthlyPayment) * 100).toFixed(1) : 0;
+    
+    // Loan Type Comparison Chart Data
+    const loanComparisonChartData = loanTypeComparison ? {
+        labels: ['Annuitetslån', 'Serielån'],
+        datasets: [
+            {
+                label: 'Total Rentekostnad',
+                data: [loanTypeComparison.annuity.totalInterest, loanTypeComparison.serial.totalInterest],
+                backgroundColor: 'rgba(255, 99, 132, 0.5)',
+                borderColor: 'rgb(255, 99, 132)',
+                borderWidth: 1
+            },
+            {
+                label: 'Lånebeløp',
+                data: [loanAmount, loanAmount],
+                backgroundColor: 'rgba(54, 162, 235, 0.5)',
+                borderColor: 'rgb(54, 162, 235)',
+                borderWidth: 1
+            }
+        ]
+    } : null;
 
     return (
         <div className="bg-gray-100 min-h-screen p-4 sm:p-6 lg:p-8 font-sans">
@@ -391,6 +559,15 @@ const App = () => {
                 <header className="mb-8 text-center">
                     <h1 className="text-4xl font-bold text-gray-800">Avansert Lånekalkulator</h1>
                     <p className="text-lg text-gray-600 mt-2">Se hva dere har råd til og hvordan kostnadene fordeles.</p>
+                    <button
+                        onClick={() => {
+                            navigator.clipboard.writeText(window.location.href);
+                            alert('Link kopiert til utklippstavlen!');
+                        }}
+                        className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                    >
+                        🔗 Kopier link med innstillinger
+                    </button>
                 </header>
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -719,6 +896,186 @@ const App = () => {
                             </div>
                         </div>
 
+                        {/* Kostnader vs Verdi */}
+                        <div className="bg-white p-6 rounded-xl shadow-lg mb-8">
+                            <h2 className="text-2xl font-semibold text-gray-700 mb-6">💸 Kostnader vs 📈 Verdi</h2>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                {/* Kostnader */}
+                                <div className="bg-red-50 p-5 rounded-lg border border-red-200">
+                                    <h3 className="text-lg font-semibold text-red-700 mb-4">💸 Totale Kostnader</h3>
+                                    <div className="space-y-3">
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-sm text-gray-600">Lånebeløp:</span>
+                                            <span className="font-semibold text-gray-800">{formatCurrency(loanAmount)}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-sm text-gray-600">Total rentekostnad:</span>
+                                            <span className="font-semibold text-red-600">{formatCurrency(totalInterest)}</span>
+                                        </div>
+                                        <div className="border-t pt-2">
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-sm font-medium text-gray-700">Sum lånekostnad:</span>
+                                                <span className="font-bold text-lg text-red-700">{formatCurrency(loanAmount + totalInterest)}</span>
+                                            </div>
+                                        </div>
+                                        <div className="mt-4 pt-3 border-t border-red-200">
+                                            <p className="text-sm font-medium text-gray-700 mb-2">Faste kostnader over {loanTerm} år:</p>
+                                            <div className="space-y-1 text-sm">
+                                                <div className="flex justify-between">
+                                                    <span className="text-gray-600">Kommunale avg:</span>
+                                                    <span>{formatCurrency(municipalDues * loanTerm)}</span>
+                                                </div>
+                                                <div className="flex justify-between">
+                                                    <span className="text-gray-600">Eiendomsskatt:</span>
+                                                    <span>{formatCurrency(propertyTax * loanTerm)}</span>
+                                                </div>
+                                                <div className="flex justify-between">
+                                                    <span className="text-gray-600">Vedlikehold:</span>
+                                                    <span>{formatCurrency(maintenance * loanTerm)}</span>
+                                                </div>
+                                                <div className="flex justify-between">
+                                                    <span className="text-gray-600">Forsikring:</span>
+                                                    <span>{formatCurrency(homeInsurance * loanTerm)}</span>
+                                                </div>
+                                                <div className="flex justify-between">
+                                                    <span className="text-gray-600">Fellesutgifter:</span>
+                                                    <span>{formatCurrency(hoa * 12 * loanTerm)}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="border-t pt-2">
+                                            <div className="flex justify-between items-center">
+                                                <span className="font-medium text-gray-700">Totale kostnader:</span>
+                                                <span className="font-bold text-xl text-red-700">{formatCurrency(totalPaidIn)}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                {/* Verdi */}
+                                <div className="bg-green-50 p-5 rounded-lg border border-green-200">
+                                    <h3 className="text-lg font-semibold text-green-700 mb-4">📈 Boligverdi & Gevinst</h3>
+                                    <div className="space-y-3">
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-sm text-gray-600">Kjøpspris:</span>
+                                            <span className="font-semibold text-gray-800">{formatCurrency(finalPropertyValue)}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-sm text-gray-600">Egenkapital:</span>
+                                            <span className="font-semibold text-green-600">{formatCurrency(totalDownPayment)}</span>
+                                        </div>
+                                        <div className="border-t pt-2">
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-sm font-medium text-gray-700">Verdi etter {loanTerm} år:</span>
+                                                <span className="font-bold text-lg text-green-700">{formatCurrency(futurePropertyValue)}</span>
+                                            </div>
+                                        </div>
+                                        <div className="mt-4 pt-3 border-t border-green-200">
+                                            <p className="text-sm font-medium text-gray-700 mb-2">Verdiutvikling:</p>
+                                            <div className="space-y-1 text-sm">
+                                                <div className="flex justify-between">
+                                                    <span className="text-gray-600">Verdiøkning:</span>
+                                                    <span className="text-green-600 font-semibold">{formatCurrency(totalEquityGain)}</span>
+                                                </div>
+                                                <div className="flex justify-between">
+                                                    <span className="text-gray-600">Årlig økning:</span>
+                                                    <span>{annualAppreciation}%</span>
+                                                </div>
+                                                <div className="flex justify-between">
+                                                    <span className="text-gray-600">Nåverdi:</span>
+                                                    <span>{formatCurrency(presentValueOfFutureSale)}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="border-t pt-2">
+                                            <div className="flex justify-between items-center">
+                                                <span className="font-medium text-gray-700">Netto gevinst:</span>
+                                                <span className={`font-bold text-xl ${realPropertyGain > 0 ? 'text-green-700' : 'text-red-700'}`}>
+                                                    {formatCurrency(realPropertyGain)}
+                                                </span>
+                                            </div>
+                                            <p className="text-xs text-gray-500 mt-1">Verdi - alle kostnader</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            {/* Summary bar */}
+                            <div className="mt-6 p-4 bg-gray-100 rounded-lg">
+                                <div className="flex justify-between items-center">
+                                    <div>
+                                        <p className="text-sm text-gray-600">Total investering</p>
+                                        <p className="text-lg font-bold text-gray-800">{formatCurrency(totalPaidIn)}</p>
+                                    </div>
+                                    <div className="text-center">
+                                        <p className="text-2xl">→</p>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className="text-sm text-gray-600">Boligverdi etter {loanTerm} år</p>
+                                        <p className="text-lg font-bold text-green-700">{formatCurrency(futurePropertyValue)}</p>
+                                    </div>
+                                    <div className="text-center">
+                                        <p className="text-2xl">=</p>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className="text-sm text-gray-600">Gevinst/tap</p>
+                                        <p className={`text-xl font-bold ${realPropertyGain > 0 ? 'text-green-700' : 'text-red-700'}`}>
+                                            {realPropertyGain > 0 ? '+' : ''}{formatCurrency(realPropertyGain)}
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Lånetype sammenligning */}
+                        {loanTypeComparison && (
+                            <div className="bg-white p-6 rounded-xl shadow-lg mb-8">
+                                <h3 className="text-xl font-semibold text-gray-700 mb-4">📊 Sammenligning: Annuitetslån vs Serielån</h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div>
+                                        <Bar 
+                                            data={loanComparisonChartData} 
+                                            options={{ 
+                                                responsive: true, 
+                                                plugins: { 
+                                                    legend: { display: true, position: 'top' },
+                                                    title: { display: true, text: 'Total kostnad over løpetiden' }
+                                                },
+                                                scales: {
+                                                    x: { stacked: true },
+                                                    y: { stacked: true, ticks: { callback: value => `${(value/1000000).toFixed(1)}M` }}
+                                                }
+                                            }} 
+                                        />
+                                    </div>
+                                    <div className="space-y-4">
+                                        <div className="bg-blue-50 p-4 rounded-lg">
+                                            <h4 className="font-semibold text-gray-700 mb-2">Annuitetslån {loanType === 'annuity' ? '(valgt ✓)' : ''}</h4>
+                                            <p className="text-sm text-gray-600">Total rente: <span className="font-bold text-red-600">{formatCurrency(loanType === 'annuity' ? totalInterest : loanTypeComparison.annuity.totalInterest)}</span></p>
+                                            <p className="text-sm text-gray-600">Første betaling: {formatCurrency(loanTypeComparison.annuity.firstPayment)}</p>
+                                            <p className="text-sm text-gray-600">Siste betaling: {formatCurrency(loanTypeComparison.annuity.lastPayment)}</p>
+                                            <p className="text-sm text-gray-600">Total kostnad: <span className="font-bold">{formatCurrency(loanTypeComparison.annuity.totalCost)}</span></p>
+                                        </div>
+                                        <div className="bg-green-50 p-4 rounded-lg">
+                                            <h4 className="font-semibold text-gray-700 mb-2">Serielån {loanType === 'serial' ? '(valgt ✓)' : ''}</h4>
+                                            <p className="text-sm text-gray-600">Total rente: <span className="font-bold text-red-600">{formatCurrency(loanType === 'serial' ? totalInterest : loanTypeComparison.serial.totalInterest)}</span></p>
+                                            <p className="text-sm text-gray-600">Første betaling: {formatCurrency(loanTypeComparison.serial.firstPayment)}</p>
+                                            <p className="text-sm text-gray-600">Siste betaling: {formatCurrency(loanTypeComparison.serial.lastPayment)}</p>
+                                            <p className="text-sm text-gray-600">Total kostnad: <span className="font-bold">{formatCurrency(loanTypeComparison.serial.totalCost)}</span></p>
+                                        </div>
+                                        <div className={`p-3 rounded-lg ${loanTypeComparison.annuity.totalInterest < loanTypeComparison.serial.totalInterest ? 'bg-blue-100 border border-blue-300' : 'bg-green-100 border border-green-300'}`}>
+                                            <p className="text-sm font-medium">
+                                                {loanTypeComparison.annuity.totalInterest < loanTypeComparison.serial.totalInterest 
+                                                    ? `Annuitetslån sparer ${formatCurrency(loanTypeComparison.serial.totalInterest - loanTypeComparison.annuity.totalInterest)} i renter`
+                                                    : `Serielån sparer ${formatCurrency(loanTypeComparison.annuity.totalInterest - loanTypeComparison.serial.totalInterest)} i renter`
+                                                }
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                             <div className="bg-white p-6 rounded-xl shadow-lg">
                                 <h3 className="text-xl font-semibold text-gray-700 mb-4">Lånebalanse over tid (Totalt)</h3>
@@ -726,8 +1083,46 @@ const App = () => {
                             </div>
                             <div className="bg-white p-6 rounded-xl shadow-lg">
                                 <h3 className="text-xl font-semibold text-gray-700 mb-4">Månedlig Betalingsfordeling (Totalt, 1. mnd)</h3>
+                                
+                                {/* Principal vs Interest bar */}
+                                <div className="mb-4">
+                                    <p className="text-sm text-gray-600 mb-2">Avdrag vs Renter (første betaling)</p>
+                                    <div className="w-full bg-gray-200 rounded-full h-8 flex overflow-hidden">
+                                        <div 
+                                            className="bg-green-500 flex items-center justify-center text-white text-xs font-semibold"
+                                            style={{ width: `${principalPercentage}%` }}
+                                        >
+                                            Avdrag {principalPercentage}%
+                                        </div>
+                                        <div 
+                                            className="bg-red-500 flex items-center justify-center text-white text-xs font-semibold"
+                                            style={{ width: `${interestPercentage}%` }}
+                                        >
+                                            Renter {interestPercentage}%
+                                        </div>
+                                    </div>
+                                    <div className="flex justify-between text-sm text-gray-600 mt-1">
+                                        <span>Avdrag: {formatCurrency(firstPaymentPrincipal)}</span>
+                                        <span>Renter: {formatCurrency(firstPaymentInterest)}</span>
+                                    </div>
+                                </div>
+                                
                                 <div className="h-64 flex items-center justify-center">
-                                    <Pie data={paymentBreakdownChartData} options={{ responsive: true, maintainAspectRatio: false }} />
+                                    <Pie data={paymentBreakdownChartData} options={{ 
+                                        responsive: true, 
+                                        maintainAspectRatio: false,
+                                        plugins: {
+                                            tooltip: {
+                                                callbacks: {
+                                                    label: function(context) {
+                                                        const label = context.label || '';
+                                                        const value = formatCurrency(context.parsed);
+                                                        return `${label}: ${value}`;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }} />
                                 </div>
                             </div>
                         </div>
