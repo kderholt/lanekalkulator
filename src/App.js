@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Line, Pie } from 'react-chartjs-2';
+// Chart imports removed as they are no longer used
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, PointElement, LineElement, Title, BarElement } from 'chart.js';
 
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, PointElement, LineElement, Title, BarElement);
@@ -75,7 +75,8 @@ const App = () => {
     const [annualAppreciation, setAnnualAppreciation] = useState(parseFloat(urlParams.aa) || 3.0);
     const [requiredReturn, setRequiredReturn] = useState(parseFloat(urlParams.rr) || 5.0);
     const [rentalIncome, setRentalIncome] = useState(parseInt(urlParams.ri) || 0);
-    const [alternativeRentCost, setAlternativeRentCost] = useState(parseInt(urlParams.arc) || 20000); // Ny input for klassisk sammenligning
+    // Alternative rent cost removed - now calculating break-even automatically
+    const alternativeRentCost = 0; // Not used anymore, kept for backwards compatibility in calculations
 
     // Property tax settings
     const [propertyTaxMode, setPropertyTaxMode] = useState(urlParams.ptm || 'oslo'); // 'oslo' or 'custom'
@@ -911,150 +912,6 @@ const App = () => {
                                 </div>
                             </div>
 
-                            {/* Kollapsbar investeringsanalyse */}
-                            <div className="border-t pt-4 mt-4">
-                                <button
-                                    onClick={() => toggleSection('investmentAnalysis')}
-                                    className="w-full flex justify-between items-center text-md font-medium text-gray-600 hover:text-gray-800 p-2 rounded hover:bg-gray-100"
-                                    aria-expanded={expandedSections.investmentAnalysis}
-                                >
-                                    <span>💰 Investeringsanalyse</span>
-                                    <span className="text-xl">{expandedSections.investmentAnalysis ? '−' : '+'}</span>
-                                </button>
-                                
-                                {expandedSections.investmentAnalysis && (
-                                    <div className="mt-4 bg-gradient-to-br from-gray-50 to-gray-100 p-6 rounded-xl border border-gray-200">
-                                        
-                                        {/* Klassisk leie vs kjøpe */}
-                                        <div className="mb-6">
-                                            <h5 className="text-md font-medium text-gray-700 mb-3">🏠 Klassisk situasjon: Leie vs Kjøpe</h5>
-                                            <div className="mb-3">
-                                                <label className="text-sm text-gray-600">Hva koster det å leie tilsvarende bolig? (kr/mnd)</label>
-                                                <input
-                                                    type="number"
-                                                    value={alternativeRentCost}
-                                                    onChange={(e) => setAlternativeRentCost(Number(e.target.value))}
-                                                    className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                                    placeholder="20000"
-                                                />
-                                            </div>
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
-                                                <div className="bg-white p-4 rounded-lg">
-                                                    <p className="text-sm text-gray-600 mb-1">Nettoformue ved kjøp</p>
-                                                    <p className="text-2xl font-bold text-gray-800">{formatCurrency(totalPropertyReturn)}</p>
-                                                    <p className="text-xs text-gray-500 mt-1">Bolig minus gjeld etter {Math.round(yearsToPayoff)} år</p>
-                                                </div>
-                                                <div className="bg-white p-4 rounded-lg">
-                                                    <p className="text-sm text-gray-600 mb-1">Formue ved å leie og investere</p>
-                                                    <p className="text-2xl font-bold text-gray-800">{formatCurrency(totalRentVsBuyWealth)}</p>
-                                                    <p className="text-xs text-gray-500 mt-1">Leie {formatCurrency(alternativeRentCost)}/mnd, investere resten</p>
-                                                </div>
-                                            </div>
-                                            <div className={`p-3 rounded-lg ${classicRentVsBuyAdvantage > 0 ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
-                                                <p className={`text-sm ${classicRentVsBuyAdvantage > 0 ? 'text-green-700' : 'text-red-700'}`}>
-                                                    {classicRentVsBuyAdvantage > 0 
-                                                        ? `✓ Boligkjøp gir ${formatCurrency(classicRentVsBuyAdvantage)} høyere formue enn å leie`
-                                                        : `✗ Å leie og investere gir ${formatCurrency(Math.abs(classicRentVsBuyAdvantage))} høyere formue`
-                                                    }
-                                                </p>
-                                                {totalMonthlyCost - alternativeRentCost > 0 && (
-                                                    <p className="text-xs text-gray-600 mt-1">
-                                                        Ved å leie sparer du {formatCurrency(Math.round(totalMonthlyCost - alternativeRentCost))}/mnd som kan investeres
-                                                    </p>
-                                                )}
-                                                {totalMonthlyCost - alternativeRentCost < 0 && (
-                                                    <p className="text-xs text-gray-600 mt-1">
-                                                        Å eie koster {formatCurrency(Math.round(Math.abs(totalMonthlyCost - alternativeRentCost)))} mer per måned enn å leie
-                                                    </p>
-                                                )}
-                                            </div>
-                                        </div>
-                                        
-                                        {/* Sammenligning 1: Ren investering */}
-                                        <div className="mb-6">
-                                            <h5 className="text-md font-medium text-gray-700 mb-3">💰 Ren investeringsgevinst</h5>
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
-                                                <div className="bg-white p-4 rounded-lg">
-                                                    <p className="text-sm text-gray-600 mb-1">Gevinst fra boligkjøp</p>
-                                                    <p className="text-2xl font-bold text-gray-800">{formatCurrency(realPropertyGain)}</p>
-                                                    <p className="text-xs text-gray-500 mt-1">Boligverdi minus alt du har betalt ({formatCurrency(totalPaidIn)})</p>
-                                                </div>
-                                                <div className="bg-white p-4 rounded-lg">
-                                                    <p className="text-sm text-gray-600 mb-1">Gevinst fra å investere egenkapital ({requiredReturn}%)</p>
-                                                    <p className="text-2xl font-bold text-gray-800">{formatCurrency(pureAlternativeReturn - totalDownPayment)}</p>
-                                                    <p className="text-xs text-gray-500 mt-1">Kun {formatCurrency(totalDownPayment)} investert</p>
-                                                </div>
-                                            </div>
-                                            <div className={`p-3 rounded-lg ${pureInvestmentAdvantage > 0 ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
-                                                <p className={`text-sm ${pureInvestmentAdvantage > 0 ? 'text-green-700' : 'text-red-700'}`}>
-                                                    {pureInvestmentAdvantage > 0 
-                                                        ? `✓ Boligkjøpet gir ${formatCurrency(pureInvestmentAdvantage)} høyere gevinst`
-                                                        : `✗ Investering gir ${formatCurrency(Math.abs(pureInvestmentAdvantage))} høyere gevinst`
-                                                    }
-                                                </p>
-                                            </div>
-                                        </div>
-                                        
-                                        {/* Sammenligning 2: Total formue */}
-                                        <div className="mb-6">
-                                            <h5 className="text-md font-medium text-gray-700 mb-3">🏦 Total formue (hvis du sparer alt)</h5>
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
-                                                <div className="bg-white p-4 rounded-lg">
-                                                    <p className="text-sm text-gray-600 mb-1">Nettoformue med bolig</p>
-                                                    <p className="text-2xl font-bold text-gray-800">{formatCurrency(totalPropertyReturn)}</p>
-                                                    <p className="text-xs text-gray-500 mt-1">Boligverdi ({formatCurrency(futurePropertyValue)}) - Restgjeld ({formatCurrency(remainingDebt)})</p>
-                                                </div>
-                                                <div className="bg-white p-4 rounded-lg">
-                                                    <p className="text-sm text-gray-600 mb-1">Formue hvis du sparte {formatCurrency(Math.round(calculatedMonthlyPayment + (municipalDues/12) + (homeInsurance/12) + (propertyTax/12) + (maintenance/12) + hoa))}/mnd</p>
-                                                    <p className="text-2xl font-bold text-gray-800">{formatCurrency(totalAlternativeReturn)}</p>
-                                                    <p className="text-xs text-gray-500 mt-1">Med {requiredReturn}% årlig avkastning</p>
-                                                </div>
-                                            </div>
-                                            <div className={`p-3 rounded-lg ${investmentAdvantage > 0 ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
-                                                <p className={`text-sm ${investmentAdvantage > 0 ? 'text-green-700' : 'text-red-700'}`}>
-                                                    {investmentAdvantage > 0 
-                                                        ? `✓ Boligkjøpet gir ${formatCurrency(investmentAdvantage)} høyere formue`
-                                                        : `✗ Sparing gir ${formatCurrency(Math.abs(investmentAdvantage))} høyere formue`
-                                                    }
-                                                </p>
-                                            </div>
-                                        </div>
-
-                                        {/* Detaljerte metrics */}
-                                        <div className="border-t pt-4">
-                                            <p className="text-sm text-gray-600 mb-3">Detaljerte beregninger:</p>
-                                            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                                                <SummaryBox
-                                                    label="Total investert"
-                                                    value={totalPaidIn}
-                                                    format="currency"
-                                                    tooltip="Alt du har betalt inn over perioden"
-                                                />
-                                                <SummaryBox
-                                                    label={`Boligverdi etter ${Math.round(yearsToPayoff)} år`}
-                                                    value={futurePropertyValue}
-                                                    format="currency"
-                                                />
-                                                <SummaryBox
-                                                    label="Reell gevinst"
-                                                    value={realPropertyGain}
-                                                    format="currency"
-                                                    color={realPropertyGain > 0 ? "text-green-600" : "text-red-600"}
-                                                    tooltip="Boligverdi minus alt du har betalt"
-                                                />
-                                                {rentalIncome > 0 && (
-                                                    <SummaryBox
-                                                        label="Nåverdi av utleieinntekter"
-                                                        value={presentValueOfRentalIncome}
-                                                        format="currency"
-                                                        tooltip="Hva fremtidige leieinntekter er verdt i dag"
-                                                    />
-                                                )}
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
                         </div>
 
 
@@ -1139,139 +996,209 @@ const App = () => {
                                     <p>Ingen lånedata tilgjengelig</p>
                                 </div>
                             )}
-                            
-                            {/* Summary bar */}
-                            <div className="mt-6 p-4 bg-gray-100 rounded-lg">
-                                {loanTypeComparison ? (
-                                    <div className="space-y-3">
-                                        {/* Annuitetslån */}
-                                        <div className="flex justify-between items-center">
-                                            <div>
-                                                <p className="text-xs text-gray-600">Annuitetslån</p>
-                                                <p className="text-sm text-gray-600">Total investering</p>
-                                                <p className="text-base font-bold text-gray-800">{formatCurrency(totalPaidInAnnuity)}</p>
-                                            </div>
-                                            <div className="text-center">
-                                                <p className="text-xl">→</p>
-                                            </div>
-                                            <div className="text-center">
-                                                <p className="text-sm text-gray-600">Boligverdi etter {loanTerm} år</p>
-                                                <p className="text-base font-bold text-green-700">{formatCurrency(futurePropertyValue)}</p>
-                                            </div>
-                                            <div className="text-center">
-                                                <p className="text-xl">=</p>
-                                            </div>
-                                            <div className="text-right">
-                                                <p className="text-sm text-gray-600">Gevinst/tap</p>
-                                                <p className={`text-lg font-bold ${realPropertyGainAnnuity > 0 ? 'text-green-700' : 'text-red-700'}`}>
-                                                    {realPropertyGainAnnuity > 0 ? '+' : ''}{formatCurrency(realPropertyGainAnnuity)}
-                                                </p>
-                                            </div>
-                                        </div>
+                        </div>
+
+                        {/* Investeringsanalyse - Flyttet til egen seksjon */}
+                        <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+                            {/* Header med gradient */}
+                            <div className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white p-6">
+                                <h2 className="text-2xl font-bold flex items-center gap-2">
+                                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                                    </svg>
+                                    Investeringsanalyse
+                                </h2>
+                                <p className="text-purple-100 mt-1">Sammenlign boligkjøp med alternative investeringer</p>
+                            </div>
+
+                            <div className="p-6 bg-gray-50">
+                                {/* Leie vs Kjøpe - Med break-even beregning */}
+                                <div className="mb-8">
+                                    <h3 className="text-xl font-semibold text-gray-700 mb-4 flex items-center gap-2">
+                                        <span className="text-2xl">🏠</span>
+                                        Leie vs Kjøpe - Break-even analyse
+                                    </h3>
+                                    
+                                    {(() => {
+                                        // Beregn break-even leiepris
+                                        // Ved break-even: netWorthWithProperty = totalRentVsBuyWealth
+                                        // totalRentVsBuyWealth = egenkapital investert + fremtidig verdi av månedlige besparelser
                                         
-                                        {/* Serielån */}
-                                        <div className="flex justify-between items-center border-t pt-3">
-                                            <div>
-                                                <p className="text-xs text-gray-600">Serielån</p>
-                                                <p className="text-sm text-gray-600">Total investering</p>
-                                                <p className="text-base font-bold text-gray-800">{formatCurrency(totalPaidInSerial)}</p>
+                                        const r = requiredReturn / 100 / 12;
+                                        const n = yearsToPayoff * 12;
+                                        const equityGrowth = totalDownPayment * Math.pow(1 + (requiredReturn / 100), yearsToPayoff);
+                                        
+                                        // Break-even skjer når: netWorthWithProperty = equityGrowth + FV av (totalMonthlyCost - breakEvenRent)
+                                        // Løser for breakEvenRent
+                                        let breakEvenRent = totalMonthlyCost;
+                                        
+                                        if (r > 0) {
+                                            const fvFactor = (Math.pow(1 + r, n) - 1) / r;
+                                            breakEvenRent = totalMonthlyCost - ((totalPropertyReturn - equityGrowth) / fvFactor);
+                                        }
+                                        
+                                        const isRealistic = breakEvenRent > totalMonthlyCost * 0.6 && breakEvenRent < totalMonthlyCost * 1.2;
+                                        
+                                        return (
+                                            <>
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                                                    <div className="bg-blue-50 p-5 rounded-xl border-2 border-blue-300">
+                                                        <div className="flex items-center justify-between mb-3">
+                                                            <span className="text-sm font-medium text-gray-700">Break-even leiepris</span>
+                                                            <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                                                            </svg>
+                                                        </div>
+                                                        <p className="text-3xl font-bold text-blue-700">{formatCurrency(Math.round(breakEvenRent))}/mnd</p>
+                                                        <p className="text-sm text-gray-600 mt-2">
+                                                            Ved denne leieprisen blir kjøp og leie like lønnsomt
+                                                        </p>
+                                                    </div>
+                                                    
+                                                    <div className="bg-white p-5 rounded-xl shadow-md">
+                                                        <div className="flex items-center justify-between mb-3">
+                                                            <span className="text-sm font-medium text-gray-700">Din månedlige boligkostnad</span>
+                                                            <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                                                            </svg>
+                                                        </div>
+                                                        <p className="text-3xl font-bold text-gray-800">{formatCurrency(Math.round(totalMonthlyCost))}/mnd</p>
+                                                        <p className="text-sm text-gray-600 mt-2">
+                                                            Lån + felleskostnader - leieinntekt
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                                
+                                                <div className={`p-6 rounded-xl ${isRealistic ? 'bg-amber-50 border-2 border-amber-300' : 'bg-green-50 border-2 border-green-300'}`}>
+                                                    <div className="flex items-start gap-3">
+                                                        <span className="text-2xl">{isRealistic ? '⚠️' : '✅'}</span>
+                                                        <div>
+                                                            <p className="font-semibold text-gray-800 mb-2">
+                                                                {isRealistic 
+                                                                    ? 'Break-even er i et realistisk område'
+                                                                    : breakEvenRent > totalMonthlyCost 
+                                                                        ? 'Kjøp er klart mest lønnsomt!'
+                                                                        : 'Leie kan være mer lønnsomt'}
+                                                            </p>
+                                                            <div className="space-y-2 text-sm text-gray-600">
+                                                                <p>
+                                                                    • Hvis du kan leie for <strong>mindre enn {formatCurrency(Math.round(breakEvenRent))}/mnd</strong>, 
+                                                                    kan det lønne seg å leie og investere differansen
+                                                                </p>
+                                                                <p>
+                                                                    • Hvis leie koster <strong>mer enn {formatCurrency(Math.round(breakEvenRent))}/mnd</strong>, 
+                                                                    er boligkjøp mer lønnsomt
+                                                                </p>
+                                                                <p className="text-xs italic">
+                                                                    Forutsetter {requiredReturn}% årlig avkastning på investeringer
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </>
+                                        );
+                                    })()}
+                                </div>
+
+                                {/* Investerer kun egenkapitalen */}
+                                <div className="mb-8">
+                                    <h3 className="text-xl font-semibold text-gray-700 mb-4 flex items-center gap-2">
+                                        <span className="text-2xl">💰</span>
+                                        Investerer kun egenkapitalen
+                                    </h3>
+                                    <p className="text-sm text-gray-600 mb-4">
+                                        Hva hvis du tar egenkapitalen på {formatCurrency(totalDownPayment)} og investerer den i {Math.round(yearsToPayoff)} år?
+                                    </p>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                        <div className="bg-white p-5 rounded-xl shadow-md">
+                                            <div className="flex items-center justify-between mb-2">
+                                                <span className="text-sm font-medium text-gray-600">Gevinst fra boligkjøp</span>
+                                                <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                                                </svg>
                                             </div>
-                                            <div className="text-center">
-                                                <p className="text-xl">→</p>
+                                            <p className="text-2xl font-bold text-gray-800">{formatCurrency(realPropertyGain)}</p>
+                                            <p className="text-xs text-gray-500 mt-2">Gevinst fra boligkjøpet</p>
+                                        </div>
+
+                                        <div className="bg-white p-5 rounded-xl shadow-md">
+                                            <div className="flex items-center justify-between mb-2">
+                                                <span className="text-sm font-medium text-gray-600">Alternativ investering ({requiredReturn}%)</span>
+                                                <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                                                </svg>
                                             </div>
-                                            <div className="text-center">
-                                                <p className="text-sm text-gray-600">Boligverdi etter {loanTerm} år</p>
-                                                <p className="text-base font-bold text-green-700">{formatCurrency(futurePropertyValue)}</p>
-                                            </div>
-                                            <div className="text-center">
-                                                <p className="text-xl">=</p>
-                                            </div>
-                                            <div className="text-right">
-                                                <p className="text-sm text-gray-600">Gevinst/tap</p>
-                                                <p className={`text-lg font-bold ${realPropertyGainSerial > 0 ? 'text-green-700' : 'text-red-700'}`}>
-                                                    {realPropertyGainSerial > 0 ? '+' : ''}{formatCurrency(realPropertyGainSerial)}
-                                                </p>
-                                            </div>
+                                            <p className="text-2xl font-bold text-gray-800">{formatCurrency(pureAlternativeReturn - totalDownPayment)}</p>
+                                            <p className="text-xs text-gray-500 mt-2">Gevinst fra investering</p>
                                         </div>
-                                    </div>
-                                ) : (
-                                    <div className="flex justify-between items-center">
-                                        <div>
-                                            <p className="text-sm text-gray-600">Total investering</p>
-                                            <p className="text-lg font-bold text-gray-800">{formatCurrency(totalPaidIn)}</p>
-                                        </div>
-                                        <div className="text-center">
-                                            <p className="text-2xl">→</p>
-                                        </div>
-                                        <div className="text-right">
-                                            <p className="text-sm text-gray-600">Boligverdi etter {loanTerm} år</p>
-                                            <p className="text-lg font-bold text-green-700">{formatCurrency(futurePropertyValue)}</p>
-                                        </div>
-                                        <div className="text-center">
-                                            <p className="text-2xl">=</p>
-                                        </div>
-                                        <div className="text-right">
-                                            <p className="text-sm text-gray-600">Gevinst/tap</p>
-                                            <p className={`text-xl font-bold ${realPropertyGain > 0 ? 'text-green-700' : 'text-red-700'}`}>
-                                                {realPropertyGain > 0 ? '+' : ''}{formatCurrency(realPropertyGain)}
+
+                                        <div className={`p-5 rounded-xl ${pureInvestmentAdvantage > 0 ? 'bg-green-50 border-2 border-green-300' : 'bg-red-50 border-2 border-red-300'}`}>
+                                            <p className="text-sm font-medium text-gray-700 mb-2">Resultat</p>
+                                            <p className={`text-xl font-bold ${pureInvestmentAdvantage > 0 ? 'text-green-700' : 'text-red-700'}`}>
+                                                {pureInvestmentAdvantage > 0 ? '+' : ''}{formatCurrency(pureInvestmentAdvantage)}
+                                            </p>
+                                            <p className={`text-sm mt-2 ${pureInvestmentAdvantage > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                                {pureInvestmentAdvantage > 0 
+                                                    ? '✓ Boligkjøp gir høyere gevinst'
+                                                    : '✗ Investering gir høyere gevinst'
+                                                }
                                             </p>
                                         </div>
                                     </div>
-                                )}
-                            </div>
-                        </div>
-
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                            <div className="bg-white p-6 rounded-xl shadow-lg">
-                                <h3 className="text-xl font-semibold text-gray-700 mb-4">Lånebalanse over tid (Totalt)</h3>
-                                <Line data={amortizationChartData} options={{ responsive: true, plugins: { legend: { display: false }}}} />
-                            </div>
-                            <div className="bg-white p-6 rounded-xl shadow-lg">
-                                <h3 className="text-xl font-semibold text-gray-700 mb-4">Månedlig Betalingsfordeling (Totalt, 1. mnd)</h3>
-                                
-                                {/* Principal vs Interest bar */}
-                                <div className="mb-4">
-                                    <p className="text-sm text-gray-600 mb-2">Avdrag vs Renter (første betaling)</p>
-                                    <div className="w-full bg-gray-200 rounded-full h-8 flex overflow-hidden">
-                                        <div 
-                                            className="bg-green-500 flex items-center justify-center text-white text-xs font-semibold"
-                                            style={{ width: `${principalPercentage}%` }}
-                                        >
-                                            Avdrag {principalPercentage}%
-                                        </div>
-                                        <div 
-                                            className="bg-red-500 flex items-center justify-center text-white text-xs font-semibold"
-                                            style={{ width: `${interestPercentage}%` }}
-                                        >
-                                            Renter {interestPercentage}%
-                                        </div>
-                                    </div>
-                                    <div className="flex justify-between text-sm text-gray-600 mt-1">
-                                        <span>Avdrag: {formatCurrency(firstPaymentPrincipal)}</span>
-                                        <span>Renter: {formatCurrency(firstPaymentInterest)}</span>
-                                    </div>
                                 </div>
-                                
-                                <div className="h-64 flex items-center justify-center">
-                                    <Pie data={paymentBreakdownChartData} options={{ 
-                                        responsive: true, 
-                                        maintainAspectRatio: false,
-                                        plugins: {
-                                            tooltip: {
-                                                callbacks: {
-                                                    label: function(context) {
-                                                        const label = context.label || '';
-                                                        const value = formatCurrency(context.parsed);
-                                                        return `${label}: ${value}`;
-                                                    }
+
+                                {/* Dropper boligkjøp helt */}
+                                <div>
+                                    <h3 className="text-xl font-semibold text-gray-700 mb-4 flex items-center gap-2">
+                                        <span className="text-2xl">🏦</span>
+                                        Dropper boligkjøp helt
+                                    </h3>
+                                    <p className="text-sm text-gray-600 mb-4">
+                                        Investerer alt jeg ville brukt på bolig ({formatCurrency(Math.round(totalMonthlyCost))}/mnd) i {Math.round(yearsToPayoff)} år
+                                    </p>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                        <div className="bg-white p-5 rounded-xl shadow-md">
+                                            <div className="flex items-center justify-between mb-2">
+                                                <span className="text-sm font-medium text-gray-600">Nettoformue med bolig</span>
+                                                <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                                                </svg>
+                                            </div>
+                                            <p className="text-2xl font-bold text-gray-800">{formatCurrency(totalPropertyReturn)}</p>
+                                            <p className="text-xs text-gray-500 mt-2">Boligverdi - restgjeld</p>
+                                        </div>
+
+                                        <div className="bg-white p-5 rounded-xl shadow-md">
+                                            <div className="flex items-center justify-between mb-2">
+                                                <span className="text-sm font-medium text-gray-600">Investerer alt ({requiredReturn}% årlig)</span>
+                                                <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                                                </svg>
+                                            </div>
+                                            <p className="text-2xl font-bold text-gray-800">{formatCurrency(totalAlternativeReturn)}</p>
+                                            <p className="text-xs text-gray-500 mt-2">Total formue etter {Math.round(yearsToPayoff)} år</p>
+                                        </div>
+
+                                        <div className={`p-5 rounded-xl ${investmentAdvantage > 0 ? 'bg-green-50 border-2 border-green-300' : 'bg-red-50 border-2 border-red-300'}`}>
+                                            <p className="text-sm font-medium text-gray-700 mb-2">Resultat</p>
+                                            <p className={`text-xl font-bold ${investmentAdvantage > 0 ? 'text-green-700' : 'text-red-700'}`}>
+                                                {investmentAdvantage > 0 ? '+' : ''}{formatCurrency(investmentAdvantage)}
+                                            </p>
+                                            <p className={`text-sm mt-2 ${investmentAdvantage > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                                {investmentAdvantage > 0 
+                                                    ? '✓ Boligkjøp gir høyere formue'
+                                                    : '✗ Sparing gir høyere formue'
                                                 }
-                                            }
-                                        }
-                                    }} />
+                                            </p>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
+
                     </div>
                 </div>
             </div>
