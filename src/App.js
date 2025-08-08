@@ -62,7 +62,7 @@ const App = () => {
     };
 
     // Inputs (with URL params as defaults)
-    const [loanType, setLoanType] = useState(urlParams.lt || 'annuity');
+    const [loanType] = useState(urlParams.lt || 'annuity'); // Alltid annuitetslån for beregninger
     const [interestRate, setInterestRate] = useState(parseFloat(urlParams.ir) || 5.2);
     const [loanTerm, setLoanTerm] = useState(parseInt(urlParams.term) || 25);
     const [downPayment1, setDownPayment1] = useState(parseInt(urlParams.dp1) || 1000000);
@@ -94,8 +94,22 @@ const App = () => {
     const [totalMonthlyCost, setTotalMonthlyCost] = useState(0);
     const [netMonthlyCost, setNetMonthlyCost] = useState(0);
     const [totalInterest, setTotalInterest] = useState(0);
-    const [loanDetails1, setLoanDetails1] = useState({ amount: 0, payment: 0, amortization: [] });
-    const [loanDetails2, setLoanDetails2] = useState({ amount: 0, payment: 0, amortization: [] });
+    const [loanDetails1, setLoanDetails1] = useState({ 
+        amount: 0, 
+        payment: 0, 
+        amortization: [],
+        annuityPayment: 0,
+        serialFirstPayment: 0,
+        serialLastPayment: 0
+    });
+    const [loanDetails2, setLoanDetails2] = useState({ 
+        amount: 0, 
+        payment: 0, 
+        amortization: [],
+        annuityPayment: 0,
+        serialFirstPayment: 0,
+        serialLastPayment: 0
+    });
     const [propertyTax, setPropertyTax] = useState(0);
     
     // Update URL with current state
@@ -244,16 +258,62 @@ const App = () => {
 
         if (totalLoanAmount <= 0) {
             setCalculatedMonthlyPayment(0);
-            setLoanDetails1({ amount: 0, payment: 0, amortization: [] });
-            setLoanDetails2({ amount: 0, payment: 0, amortization: [] });
+            setLoanDetails1({ amount: 0, payment: 0, amortization: [], annuityPayment: 0, serialFirstPayment: 0, serialLastPayment: 0 });
+            setLoanDetails2({ amount: 0, payment: 0, amortization: [], annuityPayment: 0, serialFirstPayment: 0, serialLastPayment: 0 });
             setTotalInterest(0);
             setAmortizationData([]);
         } else {
             const details1 = calculateLoanDetails(finalLoan1);
             const details2 = calculateLoanDetails(finalLoan2);
 
-            setLoanDetails1({ amount: finalLoan1, payment: details1.firstMonthPayment, amortization: details1.amortization });
-            setLoanDetails2({ amount: finalLoan2, payment: details2.firstMonthPayment, amortization: details2.amortization });
+            // Calculate payments for both loan types for each person
+            const monthlyRate = interestRate / 100 / 12;
+            const numPayments = loanTerm * 12;
+            
+            // Person 1 calculations
+            let annuityPayment1 = 0;
+            let serialFirstPayment1 = 0;
+            let serialLastPayment1 = 0;
+            
+            if (finalLoan1 > 0) {
+                // Annuity
+                annuityPayment1 = finalLoan1 * (monthlyRate * Math.pow(1 + monthlyRate, numPayments)) / (Math.pow(1 + monthlyRate, numPayments) - 1);
+                // Serial
+                const serialPrincipal1 = finalLoan1 / numPayments;
+                serialFirstPayment1 = serialPrincipal1 + (finalLoan1 * monthlyRate);
+                serialLastPayment1 = serialPrincipal1 + (serialPrincipal1 * monthlyRate);
+            }
+            
+            // Person 2 calculations
+            let annuityPayment2 = 0;
+            let serialFirstPayment2 = 0;
+            let serialLastPayment2 = 0;
+            
+            if (finalLoan2 > 0) {
+                // Annuity
+                annuityPayment2 = finalLoan2 * (monthlyRate * Math.pow(1 + monthlyRate, numPayments)) / (Math.pow(1 + monthlyRate, numPayments) - 1);
+                // Serial
+                const serialPrincipal2 = finalLoan2 / numPayments;
+                serialFirstPayment2 = serialPrincipal2 + (finalLoan2 * monthlyRate);
+                serialLastPayment2 = serialPrincipal2 + (serialPrincipal2 * monthlyRate);
+            }
+            
+            setLoanDetails1({ 
+                amount: finalLoan1, 
+                payment: details1.firstMonthPayment, 
+                amortization: details1.amortization,
+                annuityPayment: annuityPayment1,
+                serialFirstPayment: serialFirstPayment1,
+                serialLastPayment: serialLastPayment1
+            });
+            setLoanDetails2({ 
+                amount: finalLoan2, 
+                payment: details2.firstMonthPayment, 
+                amortization: details2.amortization,
+                annuityPayment: annuityPayment2,
+                serialFirstPayment: serialFirstPayment2,
+                serialLastPayment: serialLastPayment2
+            });
             setTotalInterest(details1.totalInterestPaid + details2.totalInterestPaid);
             setCalculatedMonthlyPayment(details1.firstMonthPayment + details2.firstMonthPayment);
 
@@ -304,6 +364,63 @@ const App = () => {
     const futurePropertyValue = finalPropertyValue * Math.pow(1 + (annualAppreciation / 100), yearsToPayoff);
     const totalEquityGain = futurePropertyValue - finalPropertyValue;
 
+    // Loan Type Comparison Calculation (moved here to avoid use-before-define)
+    const loanTypeComparison = useMemo(() => {
+        if (loanAmount <= 0) return null;
+        
+        const monthlyInterestRate = interestRate / 100 / 12;
+        const numberOfPayments = loanTerm * 12;
+        
+        // Calculate for Annuity loan
+        const annuityPayment = loanAmount * (monthlyInterestRate * Math.pow(1 + monthlyInterestRate, numberOfPayments)) / (Math.pow(1 + monthlyInterestRate, numberOfPayments) - 1);
+        let annuityTotalInterest = 0;
+        let annuityBalance = loanAmount;
+        const annuityMonthlyPayments = [];
+        
+        for (let i = 1; i <= numberOfPayments; i++) {
+            const interestPayment = annuityBalance * monthlyInterestRate;
+            const principalPayment = annuityPayment - interestPayment;
+            annuityBalance -= principalPayment;
+            annuityTotalInterest += interestPayment;
+            if (i === 1 || i === Math.floor(numberOfPayments/2) || i === numberOfPayments) {
+                annuityMonthlyPayments.push({ month: i, payment: annuityPayment, principal: principalPayment, interest: interestPayment });
+            }
+        }
+        
+        // Calculate for Serial loan
+        const serialPrincipalPayment = loanAmount / numberOfPayments;
+        let serialTotalInterest = 0;
+        let serialBalance = loanAmount;
+        const serialMonthlyPayments = [];
+        
+        for (let i = 1; i <= numberOfPayments; i++) {
+            const interestPayment = serialBalance * monthlyInterestRate;
+            const totalPayment = serialPrincipalPayment + interestPayment;
+            serialBalance -= serialPrincipalPayment;
+            serialTotalInterest += interestPayment;
+            if (i === 1 || i === Math.floor(numberOfPayments/2) || i === numberOfPayments) {
+                serialMonthlyPayments.push({ month: i, payment: totalPayment, principal: serialPrincipalPayment, interest: interestPayment });
+            }
+        }
+        
+        return {
+            annuity: {
+                totalInterest: annuityTotalInterest,
+                totalCost: loanAmount + annuityTotalInterest,
+                firstPayment: annuityPayment,
+                lastPayment: annuityPayment,
+                monthlyPayments: annuityMonthlyPayments
+            },
+            serial: {
+                totalInterest: serialTotalInterest,
+                totalCost: loanAmount + serialTotalInterest,
+                firstPayment: serialPrincipalPayment + (loanAmount * monthlyInterestRate),
+                lastPayment: serialPrincipalPayment + (serialPrincipalPayment * monthlyInterestRate),
+                monthlyPayments: serialMonthlyPayments
+            }
+        };
+    }, [loanAmount, interestRate, loanTerm]);
+
     // FIX 2: Complete rewrite of NPV and related financial metrics for correctness
     const calculateAdvancedMetrics = useMemo(() => {
         if (yearsToPayoff <= 0 || !amortizationData || amortizationData.length === 0) {
@@ -348,6 +465,26 @@ const App = () => {
         
         // Din reelle gevinst fra boligkjøp
         const realPropertyGain = netWorthWithProperty - totalPaidIn;
+        
+        // Beregn separate verdier for annuitetslån og serielån
+        let totalPaidInAnnuity = totalPaidIn;
+        let totalPaidInSerial = totalPaidIn;
+        let realPropertyGainAnnuity = realPropertyGain;
+        let realPropertyGainSerial = realPropertyGain;
+        
+        if (loanTypeComparison) {
+            // For annuitetslån
+            totalPaidInAnnuity = totalDownPayment + loanTypeComparison.annuity.totalInterest + (loanAmount - remainingDebt) + 
+                               ((municipalDues + homeInsurance + propertyTax + maintenance + (hoa * 12)) * yearsToPayoff) -
+                               (rentalIncome * 12 * yearsToPayoff);
+            realPropertyGainAnnuity = netWorthWithProperty - totalPaidInAnnuity;
+            
+            // For serielån
+            totalPaidInSerial = totalDownPayment + loanTypeComparison.serial.totalInterest + (loanAmount - remainingDebt) + 
+                              ((municipalDues + homeInsurance + propertyTax + maintenance + (hoa * 12)) * yearsToPayoff) -
+                              (rentalIncome * 12 * yearsToPayoff);
+            realPropertyGainSerial = netWorthWithProperty - totalPaidInSerial;
+        }
         
         // Ren investeringssammenligning - kun egenkapital
         const pureAlternativeReturn = totalDownPayment * Math.pow(1 + (requiredReturn / 100), yearsToPayoff);
@@ -422,9 +559,13 @@ const App = () => {
             pureInvestmentAdvantage,
             totalPaidIn,
             classicRentVsBuyAdvantage,
-            totalRentVsBuyWealth
+            totalRentVsBuyWealth,
+            totalPaidInAnnuity,
+            totalPaidInSerial,
+            realPropertyGainAnnuity,
+            realPropertyGainSerial
         };
-    }, [yearsToPayoff, amortizationData, municipalDues, homeInsurance, propertyTax, maintenance, hoa, rentalIncome, requiredReturn, futurePropertyValue, totalDownPayment, totalInterest, loanAmount, calculatedMonthlyPayment, totalMonthlyCost, alternativeRentCost]);
+    }, [yearsToPayoff, amortizationData, municipalDues, homeInsurance, propertyTax, maintenance, hoa, rentalIncome, requiredReturn, futurePropertyValue, totalDownPayment, totalInterest, loanAmount, calculatedMonthlyPayment, totalMonthlyCost, alternativeRentCost, loanTypeComparison]);
 
     const { 
         totalPropertyReturn, 
@@ -438,65 +579,12 @@ const App = () => {
         pureInvestmentAdvantage,
         totalPaidIn,
         classicRentVsBuyAdvantage,
-        totalRentVsBuyWealth
+        totalRentVsBuyWealth,
+        totalPaidInAnnuity,
+        totalPaidInSerial,
+        realPropertyGainAnnuity,
+        realPropertyGainSerial
     } = calculateAdvancedMetrics;
-
-    // Loan Type Comparison Calculation
-    const loanTypeComparison = useMemo(() => {
-        if (loanAmount <= 0) return null;
-        
-        const monthlyInterestRate = interestRate / 100 / 12;
-        const numberOfPayments = loanTerm * 12;
-        
-        // Calculate for Annuity loan
-        const annuityPayment = loanAmount * (monthlyInterestRate * Math.pow(1 + monthlyInterestRate, numberOfPayments)) / (Math.pow(1 + monthlyInterestRate, numberOfPayments) - 1);
-        let annuityTotalInterest = 0;
-        let annuityBalance = loanAmount;
-        const annuityMonthlyPayments = [];
-        
-        for (let i = 1; i <= numberOfPayments; i++) {
-            const interestPayment = annuityBalance * monthlyInterestRate;
-            const principalPayment = annuityPayment - interestPayment;
-            annuityBalance -= principalPayment;
-            annuityTotalInterest += interestPayment;
-            if (i === 1 || i === Math.floor(numberOfPayments/2) || i === numberOfPayments) {
-                annuityMonthlyPayments.push({ month: i, payment: annuityPayment, principal: principalPayment, interest: interestPayment });
-            }
-        }
-        
-        // Calculate for Serial loan
-        const serialPrincipalPayment = loanAmount / numberOfPayments;
-        let serialTotalInterest = 0;
-        let serialBalance = loanAmount;
-        const serialMonthlyPayments = [];
-        
-        for (let i = 1; i <= numberOfPayments; i++) {
-            const interestPayment = serialBalance * monthlyInterestRate;
-            const totalPayment = serialPrincipalPayment + interestPayment;
-            serialBalance -= serialPrincipalPayment;
-            serialTotalInterest += interestPayment;
-            if (i === 1 || i === Math.floor(numberOfPayments/2) || i === numberOfPayments) {
-                serialMonthlyPayments.push({ month: i, payment: totalPayment, principal: serialPrincipalPayment, interest: interestPayment });
-            }
-        }
-        
-        return {
-            annuity: {
-                totalInterest: annuityTotalInterest,
-                totalCost: loanAmount + annuityTotalInterest,
-                firstPayment: annuityPayment,
-                lastPayment: annuityPayment,
-                monthlyPayments: annuityMonthlyPayments
-            },
-            serial: {
-                totalInterest: serialTotalInterest,
-                totalCost: loanAmount + serialTotalInterest,
-                firstPayment: serialPrincipalPayment + (loanAmount * monthlyInterestRate),
-                lastPayment: serialPrincipalPayment + (serialPrincipalPayment * monthlyInterestRate),
-                monthlyPayments: serialMonthlyPayments
-            }
-        };
-    }, [loanAmount, interestRate, loanTerm]);
 
     // Chart Data
     const amortizationChartData = {
@@ -594,13 +682,6 @@ const App = () => {
                         <InputSlider label="Ønsket Eierandel (Din andel %)" value={ownershipSplit} onChange={e => setOwnershipSplit(Number(e.target.value))} min={0} max={100} step={1} format="percent" />
 
                         <h3 className="text-xl font-semibold text-gray-700 mt-8 mb-4 border-b pb-2">Lånebetingelser</h3>
-                        <div className="mb-4">
-                            <label className="block text-sm font-medium text-gray-700 mb-2">Lånetype</label>
-                            <div className="flex rounded-md shadow-sm" role="group" aria-label="Velg lånetype">
-                                <button onClick={() => setLoanType('annuity')} className={`flex-1 p-2 rounded-l-md ${loanType === 'annuity' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`} aria-pressed={loanType === 'annuity'}>Annuitetslån</button>
-                                <button onClick={() => setLoanType('serial')} className={`flex-1 p-2 rounded-r-md ${loanType === 'serial' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`} aria-pressed={loanType === 'serial'}>Serielån</button>
-                            </div>
-                        </div>
                         <InputSlider label="Rente (%)" value={interestRate} onChange={e => setInterestRate(Number(e.target.value))} min={0.1} max={20} step={0.01} format="percent" />
                         <InputSlider label="Løpetid (År)" value={loanTerm} onChange={e => setLoanTerm(Number(e.target.value))} min={1} max={40} step={1} format="years" />
         
@@ -608,14 +689,13 @@ const App = () => {
                             <div className="mt-6 pt-6 border-t bg-blue-50 p-4 rounded-lg">
                                 <h4 className="font-semibold text-gray-700 mb-2">Resultat:</h4>
                                 <SummaryBox label="Maksimal Boligpris" value={finalPropertyValue} format="currency" color="text-purple-600" isLarge={true} />
-                                <SummaryBox label="Total Månedlig Kostnad" value={totalMonthlyCost} format="currency" color="text-purple-600" isLarge={true} />
+                                <SummaryBox label="Månedlig Betaling" value={calculatedMonthlyPayment} format="currency" color="text-purple-600" isLarge={true} />
                                 <SummaryBox label="Tilhørende Lånebeløp" value={loanAmount} format="currency" color="text-indigo-600" isLarge={true} />
                             </div>
                         ) : (
                             <div className="mt-6 pt-6 border-t bg-blue-50 p-4 rounded-lg">
                                 <h4 className="font-semibold text-gray-700 mb-2">Resultat:</h4>
-                                <SummaryBox label="Total Månedlig Kostnad" value={totalMonthlyCost} format="currency" color="text-purple-600" isLarge={true} />
-                                <SummaryBox label="Netto Månedlig Kostnad" value={netMonthlyCost} format="currency" color="text-purple-600" isLarge={true} />
+                                <SummaryBox label="Månedlig Betaling" value={calculatedMonthlyPayment} format="currency" color="text-purple-600" isLarge={true} />
                                 <SummaryBox label="Nødvendig Lånebeløp" value={loanAmount} format="currency" color="text-indigo-600" isLarge={true} />
                             </div>
                         )}
@@ -649,20 +729,69 @@ const App = () => {
                     <div className="lg:col-span-2 space-y-8">
                         <div className="bg-white p-6 rounded-xl shadow-lg">
                             <h2 className="text-2xl font-semibold text-gray-700 mb-4">Individuell Fordeling</h2>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-center">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div className="bg-gray-50 p-4 rounded-lg">
-                                    <h3 className="font-bold text-lg text-gray-800">Låntaker 1 (Deg)</h3>
-                                    <p className="text-sm text-gray-600">Egenkapital: <span className="font-semibold">{formatCurrency(downPayment1)} ({downPaymentPercentage1.toFixed(0)}%)</span></p>
-                                    <p className="text-sm text-gray-600">Eierandel: <span className="font-semibold">{ownershipSplit}%</span></p>
-                                    <SummaryBox label="Ditt Lånebeløp" value={loanDetails1.amount} format="currency" color="text-blue-600" isLarge={true} />
-                                    <SummaryBox label="Din Månedlige Betaling (1. mnd)" value={loanDetails1.payment} format="currency" color="text-blue-600" isLarge={true} />
+                                    <h3 className="font-bold text-lg text-gray-800 mb-3">Låntaker 1 (Deg)</h3>
+                                    <div className="space-y-2 mb-4">
+                                        <p className="text-sm text-gray-600">Egenkapital: <span className="font-semibold">{formatCurrency(downPayment1)} ({downPaymentPercentage1.toFixed(0)}%)</span></p>
+                                        <p className="text-sm text-gray-600">Eierandel: <span className="font-semibold">{ownershipSplit}%</span></p>
+                                        <p className="text-sm text-gray-700 font-semibold">Lånebeløp: {formatCurrency(loanDetails1.amount)}</p>
+                                    </div>
+                                    
+                                    <div className="border-t pt-3">
+                                        <p className="text-sm font-medium text-gray-700 mb-2">Månedlige betalinger:</p>
+                                        <div className="space-y-2">
+                                            <div className="bg-blue-50 p-2 rounded border-l-4 border-blue-400">
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-sm text-gray-700">Annuitetslån {loanType === 'annuity' ? '(✓)' : ''}</span>
+                                                    <span className="font-semibold text-blue-700">{formatCurrency(Math.round(loanDetails1.annuityPayment))}</span>
+                                                </div>
+                                                <p className="text-xs text-gray-500 mt-1">Fast betaling</p>
+                                            </div>
+                                            <div className="bg-green-50 p-2 rounded border-l-4 border-green-400">
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-sm text-gray-700">Serielån {loanType === 'serial' ? '(✓)' : ''}</span>
+                                                    <span className="font-semibold text-green-700">{formatCurrency(Math.round(loanDetails1.serialFirstPayment))}</span>
+                                                </div>
+                                                <p className="text-xs text-gray-500 mt-1">Første: {formatCurrency(Math.round(loanDetails1.serialFirstPayment))} → Siste: {formatCurrency(Math.round(loanDetails1.serialLastPayment))}</p>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
+                                
                                 <div className="bg-gray-50 p-4 rounded-lg">
-                                    <h3 className="font-bold text-lg text-gray-800">Låntaker 2</h3>
-                                    <p className="text-sm text-gray-600">Egenkapital: <span className="font-semibold">{formatCurrency(downPayment2)} ({downPaymentPercentage2.toFixed(0)}%)</span></p>
-                                    <p className="text-sm text-gray-600">Eierandel: <span className="font-semibold">{100 - ownershipSplit}%</span></p>
-                                    <SummaryBox label="Deres Lånebeløp" value={loanDetails2.amount} format="currency" color="text-green-600" isLarge={true} />
-                                    <SummaryBox label="Deres Månedlige Betaling (1. mnd)" value={loanDetails2.payment} format="currency" color="text-green-600" isLarge={true} />
+                                    <h3 className="font-bold text-lg text-gray-800 mb-3">Låntaker 2</h3>
+                                    <div className="space-y-2 mb-4">
+                                        <p className="text-sm text-gray-600">Egenkapital: <span className="font-semibold">{formatCurrency(downPayment2)} ({downPaymentPercentage2.toFixed(0)}%)</span></p>
+                                        <p className="text-sm text-gray-600">Eierandel: <span className="font-semibold">{100 - ownershipSplit}%</span></p>
+                                        <p className="text-sm text-gray-700 font-semibold">Lånebeløp: {formatCurrency(loanDetails2.amount)}</p>
+                                    </div>
+                                    
+                                    {loanDetails2.amount > 0 ? (
+                                        <div className="border-t pt-3">
+                                            <p className="text-sm font-medium text-gray-700 mb-2">Månedlige betalinger:</p>
+                                            <div className="space-y-2">
+                                                <div className="bg-blue-50 p-2 rounded border-l-4 border-blue-400">
+                                                    <div className="flex justify-between items-center">
+                                                        <span className="text-sm text-gray-700">Annuitetslån {loanType === 'annuity' ? '(✓)' : ''}</span>
+                                                        <span className="font-semibold text-blue-700">{formatCurrency(Math.round(loanDetails2.annuityPayment))}</span>
+                                                    </div>
+                                                    <p className="text-xs text-gray-500 mt-1">Fast betaling</p>
+                                                </div>
+                                                <div className="bg-green-50 p-2 rounded border-l-4 border-green-400">
+                                                    <div className="flex justify-between items-center">
+                                                        <span className="text-sm text-gray-700">Serielån {loanType === 'serial' ? '(✓)' : ''}</span>
+                                                        <span className="font-semibold text-green-700">{formatCurrency(Math.round(loanDetails2.serialFirstPayment))}</span>
+                                                    </div>
+                                                    <p className="text-xs text-gray-500 mt-1">Første: {formatCurrency(Math.round(loanDetails2.serialFirstPayment))} → Siste: {formatCurrency(Math.round(loanDetails2.serialLastPayment))}</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="border-t pt-3 text-center text-gray-500 text-sm">
+                                            <p>Ingen lånebehov</p>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -671,22 +800,28 @@ const App = () => {
                             <h2 className="text-2xl font-semibold text-gray-700 mb-4">Totalsammendrag</h2>
                             
                             {/* Primær informasjon - alltid synlig */}
-                            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-center mb-6">
-                                <SummaryBox 
-                                    label="Total Månedlig Kostnad" 
-                                    value={totalMonthlyCost} 
-                                    format="currency" 
-                                    color="text-blue-600"
-                                    isLarge={true}
-                                />
-                                <SummaryBox 
-                                    label="Netto Månedlig Kostnad" 
-                                    value={netMonthlyCost} 
-                                    format="currency" 
-                                    color="text-blue-600"
-                                    isLarge={true}
-                                    tooltip="Etter utleieinntekt"
-                                />
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center mb-6">
+                                <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                                    <p className="text-sm text-gray-600 mb-1">Total Månedlig</p>
+                                    {loanTypeComparison && (
+                                        <div className="space-y-1">
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-xs text-gray-600">Annuitet{loanType === 'annuity' ? ' ✓' : ''}:</span>
+                                                <span className="font-bold text-blue-700">{formatCurrency(Math.round(loanTypeComparison.annuity.firstPayment + (municipalDues / 12) + (propertyTax / 12) + (maintenance / 12) + (homeInsurance / 12) + hoa - rentalIncome))}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-xs text-gray-600">Serie{loanType === 'serial' ? ' ✓' : ''}:</span>
+                                                <span className="font-bold text-green-700">{formatCurrency(Math.round(loanTypeComparison.serial.firstPayment + (municipalDues / 12) + (propertyTax / 12) + (maintenance / 12) + (homeInsurance / 12) + hoa - rentalIncome))}</span>
+                                            </div>
+                                        </div>
+                                    )}
+                                    {!loanTypeComparison && (
+                                        <p className="text-2xl font-bold text-blue-600">{formatCurrency(netMonthlyCost)}</p>
+                                    )}
+                                    {rentalIncome > 0 && (
+                                        <p className="text-xs text-gray-500 mt-1 border-t pt-1">Etter utleie: -{formatCurrency(rentalIncome)}</p>
+                                    )}
+                                </div>
                                 <SummaryBox 
                                     label="Nedbetalingsdato" 
                                     value={payoffDate} 
@@ -694,60 +829,25 @@ const App = () => {
                                     isLarge={true}
                                 />
                                 <SummaryBox 
-                                    label="Total Egenkapitalandel" 
+                                    label="Egenkapitalandel" 
                                     value={finalPropertyValue > 0 ? `${((totalDownPayment / finalPropertyValue) * 100).toFixed(1)}%` : '0%'} 
-                                    color="text-green-600"
-                                />
-                                <SummaryBox 
-                                    label="Boligverdi ved nedbetaling" 
-                                    value={futurePropertyValue} 
-                                    format="currency" 
-                                    color="text-green-600"
-                                />
-                                <SummaryBox 
-                                    label="Forventet verdiøkning" 
-                                    value={totalEquityGain} 
-                                    format="currency" 
                                     color="text-green-600"
                                 />
                                 <SummaryBox 
                                     label="Nåverdi av bolig" 
                                     value={presentValueOfFutureSale} 
                                     format="currency" 
-                                    tooltip="Hva boligens fremtidige verdi er verdt i dagens penger"
+                                    tooltip="Verdi i dagens penger"
                                 />
                             </div>
 
-                            {/* Kollapsbar detaljer seksjon */}
-                            <div className="border-t pt-4">
-                                <button
-                                    onClick={() => toggleSection('details')}
-                                    className="w-full flex justify-between items-center text-md font-medium text-gray-600 hover:text-gray-800 p-2 rounded hover:bg-gray-100"
-                                    aria-expanded={expandedSections.details}
-                                >
-                                    <span>📄 Detaljer</span>
-                                    <span className="text-xl">{expandedSections.details ? '−' : '+'}</span>
-                                </button>
-                                
-                                {expandedSections.details && (
-                                    <div className="mt-4 grid grid-cols-2 md:grid-cols-3 gap-4">
-                                        <SummaryBox 
-                                            label="Total Rentekostnad" 
-                                            value={totalInterest} 
-                                            format="currency" 
-                                        />
-                                        <SummaryBox 
-                                            label="Total Lånekostnad" 
-                                            value={loanAmount + totalInterest} 
-                                            format="currency" 
-                                        />
-                                        <SummaryBox 
-                                            label="Månedlig lånebetaling" 
-                                            value={calculatedMonthlyPayment} 
-                                            format="currency" 
-                                        />
-                                    </div>
-                                )}
+                            {/* Felleskostnader */}
+                            <div className="bg-gray-50 p-4 rounded-lg mb-4">
+                                <div className="flex justify-between items-center">
+                                    <span className="text-sm font-medium text-gray-700">Totale felleskostnader:</span>
+                                    <span className="text-lg font-bold text-gray-800">{formatCurrency(Math.round((municipalDues / 12) + (propertyTax / 12) + (maintenance / 12) + (homeInsurance / 12) + hoa))}/mnd</span>
+                                </div>
+                                <p className="text-xs text-gray-500 mt-1">Fordeles etter eierandel mellom låntakerne</p>
                             </div>
 
                             {/* Kollapsbar investeringsanalyse */}
@@ -896,6 +996,55 @@ const App = () => {
                             </div>
                         </div>
 
+                        {/* Lånetype sammenligning */}
+                        {loanTypeComparison && (
+                            <div className="bg-white p-6 rounded-xl shadow-lg mb-8">
+                                <h3 className="text-xl font-semibold text-gray-700 mb-4">📊 Lånetypesammenligning</h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div>
+                                        <Bar 
+                                            data={loanComparisonChartData} 
+                                            options={{ 
+                                                responsive: true, 
+                                                plugins: { 
+                                                    legend: { display: true, position: 'top' },
+                                                    title: { display: true, text: 'Total kostnad over løpetiden' }
+                                                },
+                                                scales: {
+                                                    x: { stacked: true },
+                                                    y: { stacked: true, ticks: { callback: value => `${(value/1000000).toFixed(1)}M` }}
+                                                }
+                                            }} 
+                                        />
+                                    </div>
+                                    <div className="space-y-4">
+                                        <div className="bg-blue-50 p-4 rounded-lg">
+                                            <h4 className="font-semibold text-gray-700 mb-2">Annuitetslån (brukt i beregninger)</h4>
+                                            <p className="text-sm text-gray-600">Total rente: <span className="font-bold text-red-600">{formatCurrency(Math.round(loanType === 'annuity' ? totalInterest : loanTypeComparison.annuity.totalInterest))}</span></p>
+                                            <p className="text-sm text-gray-600">Første betaling: {formatCurrency(Math.round(loanTypeComparison.annuity.firstPayment))}</p>
+                                            <p className="text-sm text-gray-600">Siste betaling: {formatCurrency(Math.round(loanTypeComparison.annuity.lastPayment))}</p>
+                                            <p className="text-sm text-gray-600">Total kostnad: <span className="font-bold">{formatCurrency(Math.round(loanTypeComparison.annuity.totalCost))}</span></p>
+                                        </div>
+                                        <div className="bg-green-50 p-4 rounded-lg">
+                                            <h4 className="font-semibold text-gray-700 mb-2">Serielån</h4>
+                                            <p className="text-sm text-gray-600">Total rente: <span className="font-bold text-red-600">{formatCurrency(Math.round(loanType === 'serial' ? totalInterest : loanTypeComparison.serial.totalInterest))}</span></p>
+                                            <p className="text-sm text-gray-600">Første betaling: {formatCurrency(Math.round(loanTypeComparison.serial.firstPayment))}</p>
+                                            <p className="text-sm text-gray-600">Siste betaling: {formatCurrency(Math.round(loanTypeComparison.serial.lastPayment))}</p>
+                                            <p className="text-sm text-gray-600">Total kostnad: <span className="font-bold">{formatCurrency(Math.round(loanTypeComparison.serial.totalCost))}</span></p>
+                                        </div>
+                                        <div className={`p-3 rounded-lg ${loanTypeComparison.annuity.totalInterest < loanTypeComparison.serial.totalInterest ? 'bg-blue-100 border border-blue-300' : 'bg-green-100 border border-green-300'}`}>
+                                            <p className="text-sm font-medium">
+                                                {loanTypeComparison.annuity.totalInterest < loanTypeComparison.serial.totalInterest 
+                                                    ? `Annuitetslån sparer ${formatCurrency(Math.round(loanTypeComparison.serial.totalInterest - loanTypeComparison.annuity.totalInterest))} i renter`
+                                                    : `Serielån sparer ${formatCurrency(Math.round(loanTypeComparison.annuity.totalInterest - loanTypeComparison.serial.totalInterest))} i renter`
+                                                }
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
                         {/* Kostnader vs Verdi */}
                         <div className="bg-white p-6 rounded-xl shadow-lg mb-8">
                             <h2 className="text-2xl font-semibold text-gray-700 mb-6">💸 Kostnader vs 📈 Verdi</h2>
@@ -905,19 +1054,47 @@ const App = () => {
                                     <h3 className="text-lg font-semibold text-red-700 mb-4">💸 Totale Kostnader</h3>
                                     <div className="space-y-3">
                                         <div className="flex justify-between items-center">
+                                            <span className="text-sm text-gray-600">Egenkapital (innskudd):</span>
+                                            <span className="font-semibold text-gray-800">{formatCurrency(totalDownPayment)}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center">
                                             <span className="text-sm text-gray-600">Lånebeløp:</span>
                                             <span className="font-semibold text-gray-800">{formatCurrency(loanAmount)}</span>
                                         </div>
-                                        <div className="flex justify-between items-center">
-                                            <span className="text-sm text-gray-600">Total rentekostnad:</span>
-                                            <span className="font-semibold text-red-600">{formatCurrency(totalInterest)}</span>
-                                        </div>
-                                        <div className="border-t pt-2">
-                                            <div className="flex justify-between items-center">
-                                                <span className="text-sm font-medium text-gray-700">Sum lånekostnad:</span>
-                                                <span className="font-bold text-lg text-red-700">{formatCurrency(loanAmount + totalInterest)}</span>
-                                            </div>
-                                        </div>
+                                        {loanTypeComparison && (
+                                            <>
+                                                <div className="border-t pt-2 mb-3">
+                                                    <p className="text-sm font-medium text-gray-700 mb-2">Rentekostnader:</p>
+                                                    <div className="space-y-1">
+                                                        <div className="flex justify-between items-center">
+                                                            <span className="text-sm text-gray-600">Annuitetslån:</span>
+                                                            <span className="font-semibold text-red-600">{formatCurrency(Math.round(loanTypeComparison.annuity.totalInterest))}</span>
+                                                        </div>
+                                                        <div className="flex justify-between items-center">
+                                                            <span className="text-sm text-gray-600">Serielån:</span>
+                                                            <span className="font-semibold text-red-600">{formatCurrency(Math.round(loanTypeComparison.serial.totalInterest))}</span>
+                                                        </div>
+                                                        <div className="flex justify-between items-center bg-yellow-50 px-2 py-1 rounded">
+                                                            <span className="text-xs text-gray-600">Differanse:</span>
+                                                            <span className="text-xs font-semibold text-green-700">{formatCurrency(Math.round(loanTypeComparison.annuity.totalInterest - loanTypeComparison.serial.totalInterest))} spares med serielån</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div className="border-t pt-2">
+                                                    <p className="text-sm font-medium text-gray-700 mb-2">Sum lånekostnad:</p>
+                                                    <div className="space-y-1">
+                                                        <div className="flex justify-between items-center">
+                                                            <span className="text-sm text-gray-600">Annuitetslån:</span>
+                                                            <span className="font-semibold">{formatCurrency(Math.round(loanAmount + loanTypeComparison.annuity.totalInterest))}</span>
+                                                        </div>
+                                                        <div className="flex justify-between items-center">
+                                                            <span className="text-sm text-gray-600">Serielån:</span>
+                                                            <span className="font-semibold">{formatCurrency(Math.round(loanAmount + loanTypeComparison.serial.totalInterest))}</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </>
+                                        )}
                                         <div className="mt-4 pt-3 border-t border-red-200">
                                             <p className="text-sm font-medium text-gray-700 mb-2">Faste kostnader over {loanTerm} år:</p>
                                             <div className="space-y-1 text-sm">
@@ -943,12 +1120,26 @@ const App = () => {
                                                 </div>
                                             </div>
                                         </div>
-                                        <div className="border-t pt-2">
-                                            <div className="flex justify-between items-center">
-                                                <span className="font-medium text-gray-700">Totale kostnader:</span>
-                                                <span className="font-bold text-xl text-red-700">{formatCurrency(totalPaidIn)}</span>
+                                        {loanTypeComparison && (
+                                            <div className="border-t pt-2">
+                                                <p className="font-medium text-gray-700 mb-2">Totale kostnader (inkl. egenkapital):</p>
+                                                <div className="space-y-1">
+                                                    <div className="flex justify-between items-center">
+                                                        <span className="text-sm text-gray-600">Annuitetslån:</span>
+                                                        <span className="font-bold text-lg text-red-700">{formatCurrency(Math.round(totalDownPayment + loanAmount + loanTypeComparison.annuity.totalInterest + (municipalDues + propertyTax + maintenance + homeInsurance + (hoa * 12)) * loanTerm))}</span>
+                                                    </div>
+                                                    <div className="flex justify-between items-center">
+                                                        <span className="text-sm text-gray-600">Serielån:</span>
+                                                        <span className="font-bold text-lg text-red-700">{formatCurrency(Math.round(totalDownPayment + loanAmount + loanTypeComparison.serial.totalInterest + (municipalDues + propertyTax + maintenance + homeInsurance + (hoa * 12)) * loanTerm))}</span>
+                                                    </div>
+                                                    <div className="flex justify-between items-center bg-green-50 px-2 py-1 rounded mt-2">
+                                                        <span className="text-sm font-medium text-green-700">Besparelse med serielån:</span>
+                                                        <span className="font-bold text-green-700">{formatCurrency(Math.round(loanTypeComparison.annuity.totalInterest - loanTypeComparison.serial.totalInterest))}</span>
+                                                    </div>
+                                                </div>
+                                                <p className="text-xs text-gray-500 mt-1">Egenkapital + lån + renter + faste kostnader</p>
                                             </div>
-                                        </div>
+                                        )}
                                     </div>
                                 </div>
                                 
@@ -988,12 +1179,30 @@ const App = () => {
                                             </div>
                                         </div>
                                         <div className="border-t pt-2">
-                                            <div className="flex justify-between items-center">
-                                                <span className="font-medium text-gray-700">Netto gevinst:</span>
-                                                <span className={`font-bold text-xl ${realPropertyGain > 0 ? 'text-green-700' : 'text-red-700'}`}>
-                                                    {formatCurrency(realPropertyGain)}
-                                                </span>
-                                            </div>
+                                            <p className="font-medium text-gray-700 mb-2">Netto gevinst:</p>
+                                            {loanTypeComparison ? (
+                                                <div className="space-y-1">
+                                                    <div className="flex justify-between items-center">
+                                                        <span className="text-sm text-gray-600">Annuitetslån:</span>
+                                                        <span className={`font-bold text-lg ${realPropertyGainAnnuity > 0 ? 'text-green-700' : 'text-red-700'}`}>
+                                                            {formatCurrency(realPropertyGainAnnuity)}
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex justify-between items-center">
+                                                        <span className="text-sm text-gray-600">Serielån:</span>
+                                                        <span className={`font-bold text-lg ${realPropertyGainSerial > 0 ? 'text-green-700' : 'text-red-700'}`}>
+                                                            {formatCurrency(realPropertyGainSerial)}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <div className="flex justify-between items-center">
+                                                    <span className="font-medium text-gray-700">Netto gevinst:</span>
+                                                    <span className={`font-bold text-xl ${realPropertyGain > 0 ? 'text-green-700' : 'text-red-700'}`}>
+                                                        {formatCurrency(realPropertyGain)}
+                                                    </span>
+                                                </div>
+                                            )}
                                             <p className="text-xs text-gray-500 mt-1">Verdi - alle kostnader</p>
                                         </div>
                                     </div>
@@ -1002,79 +1211,85 @@ const App = () => {
                             
                             {/* Summary bar */}
                             <div className="mt-6 p-4 bg-gray-100 rounded-lg">
-                                <div className="flex justify-between items-center">
-                                    <div>
-                                        <p className="text-sm text-gray-600">Total investering</p>
-                                        <p className="text-lg font-bold text-gray-800">{formatCurrency(totalPaidIn)}</p>
-                                    </div>
-                                    <div className="text-center">
-                                        <p className="text-2xl">→</p>
-                                    </div>
-                                    <div className="text-right">
-                                        <p className="text-sm text-gray-600">Boligverdi etter {loanTerm} år</p>
-                                        <p className="text-lg font-bold text-green-700">{formatCurrency(futurePropertyValue)}</p>
-                                    </div>
-                                    <div className="text-center">
-                                        <p className="text-2xl">=</p>
-                                    </div>
-                                    <div className="text-right">
-                                        <p className="text-sm text-gray-600">Gevinst/tap</p>
-                                        <p className={`text-xl font-bold ${realPropertyGain > 0 ? 'text-green-700' : 'text-red-700'}`}>
-                                            {realPropertyGain > 0 ? '+' : ''}{formatCurrency(realPropertyGain)}
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Lånetype sammenligning */}
-                        {loanTypeComparison && (
-                            <div className="bg-white p-6 rounded-xl shadow-lg mb-8">
-                                <h3 className="text-xl font-semibold text-gray-700 mb-4">📊 Sammenligning: Annuitetslån vs Serielån</h3>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div>
-                                        <Bar 
-                                            data={loanComparisonChartData} 
-                                            options={{ 
-                                                responsive: true, 
-                                                plugins: { 
-                                                    legend: { display: true, position: 'top' },
-                                                    title: { display: true, text: 'Total kostnad over løpetiden' }
-                                                },
-                                                scales: {
-                                                    x: { stacked: true },
-                                                    y: { stacked: true, ticks: { callback: value => `${(value/1000000).toFixed(1)}M` }}
-                                                }
-                                            }} 
-                                        />
-                                    </div>
-                                    <div className="space-y-4">
-                                        <div className="bg-blue-50 p-4 rounded-lg">
-                                            <h4 className="font-semibold text-gray-700 mb-2">Annuitetslån {loanType === 'annuity' ? '(valgt ✓)' : ''}</h4>
-                                            <p className="text-sm text-gray-600">Total rente: <span className="font-bold text-red-600">{formatCurrency(loanType === 'annuity' ? totalInterest : loanTypeComparison.annuity.totalInterest)}</span></p>
-                                            <p className="text-sm text-gray-600">Første betaling: {formatCurrency(loanTypeComparison.annuity.firstPayment)}</p>
-                                            <p className="text-sm text-gray-600">Siste betaling: {formatCurrency(loanTypeComparison.annuity.lastPayment)}</p>
-                                            <p className="text-sm text-gray-600">Total kostnad: <span className="font-bold">{formatCurrency(loanTypeComparison.annuity.totalCost)}</span></p>
+                                {loanTypeComparison ? (
+                                    <div className="space-y-3">
+                                        {/* Annuitetslån */}
+                                        <div className="flex justify-between items-center">
+                                            <div>
+                                                <p className="text-xs text-gray-600">Annuitetslån</p>
+                                                <p className="text-sm text-gray-600">Total investering</p>
+                                                <p className="text-base font-bold text-gray-800">{formatCurrency(totalPaidInAnnuity)}</p>
+                                            </div>
+                                            <div className="text-center">
+                                                <p className="text-xl">→</p>
+                                            </div>
+                                            <div className="text-center">
+                                                <p className="text-sm text-gray-600">Boligverdi etter {loanTerm} år</p>
+                                                <p className="text-base font-bold text-green-700">{formatCurrency(futurePropertyValue)}</p>
+                                            </div>
+                                            <div className="text-center">
+                                                <p className="text-xl">=</p>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className="text-sm text-gray-600">Gevinst/tap</p>
+                                                <p className={`text-lg font-bold ${realPropertyGainAnnuity > 0 ? 'text-green-700' : 'text-red-700'}`}>
+                                                    {realPropertyGainAnnuity > 0 ? '+' : ''}{formatCurrency(realPropertyGainAnnuity)}
+                                                </p>
+                                            </div>
                                         </div>
-                                        <div className="bg-green-50 p-4 rounded-lg">
-                                            <h4 className="font-semibold text-gray-700 mb-2">Serielån {loanType === 'serial' ? '(valgt ✓)' : ''}</h4>
-                                            <p className="text-sm text-gray-600">Total rente: <span className="font-bold text-red-600">{formatCurrency(loanType === 'serial' ? totalInterest : loanTypeComparison.serial.totalInterest)}</span></p>
-                                            <p className="text-sm text-gray-600">Første betaling: {formatCurrency(loanTypeComparison.serial.firstPayment)}</p>
-                                            <p className="text-sm text-gray-600">Siste betaling: {formatCurrency(loanTypeComparison.serial.lastPayment)}</p>
-                                            <p className="text-sm text-gray-600">Total kostnad: <span className="font-bold">{formatCurrency(loanTypeComparison.serial.totalCost)}</span></p>
+                                        
+                                        {/* Serielån */}
+                                        <div className="flex justify-between items-center border-t pt-3">
+                                            <div>
+                                                <p className="text-xs text-gray-600">Serielån</p>
+                                                <p className="text-sm text-gray-600">Total investering</p>
+                                                <p className="text-base font-bold text-gray-800">{formatCurrency(totalPaidInSerial)}</p>
+                                            </div>
+                                            <div className="text-center">
+                                                <p className="text-xl">→</p>
+                                            </div>
+                                            <div className="text-center">
+                                                <p className="text-sm text-gray-600">Boligverdi etter {loanTerm} år</p>
+                                                <p className="text-base font-bold text-green-700">{formatCurrency(futurePropertyValue)}</p>
+                                            </div>
+                                            <div className="text-center">
+                                                <p className="text-xl">=</p>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className="text-sm text-gray-600">Gevinst/tap</p>
+                                                <p className={`text-lg font-bold ${realPropertyGainSerial > 0 ? 'text-green-700' : 'text-red-700'}`}>
+                                                    {realPropertyGainSerial > 0 ? '+' : ''}{formatCurrency(realPropertyGainSerial)}
+                                                </p>
+                                            </div>
                                         </div>
-                                        <div className={`p-3 rounded-lg ${loanTypeComparison.annuity.totalInterest < loanTypeComparison.serial.totalInterest ? 'bg-blue-100 border border-blue-300' : 'bg-green-100 border border-green-300'}`}>
-                                            <p className="text-sm font-medium">
-                                                {loanTypeComparison.annuity.totalInterest < loanTypeComparison.serial.totalInterest 
-                                                    ? `Annuitetslån sparer ${formatCurrency(loanTypeComparison.serial.totalInterest - loanTypeComparison.annuity.totalInterest)} i renter`
-                                                    : `Serielån sparer ${formatCurrency(loanTypeComparison.annuity.totalInterest - loanTypeComparison.serial.totalInterest)} i renter`
-                                                }
+                                    </div>
+                                ) : (
+                                    <div className="flex justify-between items-center">
+                                        <div>
+                                            <p className="text-sm text-gray-600">Total investering</p>
+                                            <p className="text-lg font-bold text-gray-800">{formatCurrency(totalPaidIn)}</p>
+                                        </div>
+                                        <div className="text-center">
+                                            <p className="text-2xl">→</p>
+                                        </div>
+                                        <div className="text-right">
+                                            <p className="text-sm text-gray-600">Boligverdi etter {loanTerm} år</p>
+                                            <p className="text-lg font-bold text-green-700">{formatCurrency(futurePropertyValue)}</p>
+                                        </div>
+                                        <div className="text-center">
+                                            <p className="text-2xl">=</p>
+                                        </div>
+                                        <div className="text-right">
+                                            <p className="text-sm text-gray-600">Gevinst/tap</p>
+                                            <p className={`text-xl font-bold ${realPropertyGain > 0 ? 'text-green-700' : 'text-red-700'}`}>
+                                                {realPropertyGain > 0 ? '+' : ''}{formatCurrency(realPropertyGain)}
                                             </p>
                                         </div>
                                     </div>
-                                </div>
+                                )}
                             </div>
-                        )}
+                        </div>
+
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                             <div className="bg-white p-6 rounded-xl shadow-lg">
