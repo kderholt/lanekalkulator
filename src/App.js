@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import LZString from 'lz-string';
 // Chart imports removed as they are no longer used
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, PointElement, LineElement, Title, BarElement } from 'chart.js';
 
@@ -16,25 +17,49 @@ const calculatePropertyTax = (propertyValue, mode, customAmount) => {
     }
 };
 
-// URL parameter handling
+// URL parameter handling with compression
 const encodeParams = (params) => {
-    const urlParams = new URLSearchParams();
+    // Remove empty/null values to save space
+    const cleanParams = {};
     Object.entries(params).forEach(([key, value]) => {
         if (value !== undefined && value !== null && value !== '') {
-            urlParams.set(key, value.toString());
+            cleanParams[key] = value;
         }
     });
-    return urlParams.toString();
+    
+    // Convert to JSON and compress
+    const jsonString = JSON.stringify(cleanParams);
+    const compressed = LZString.compressToEncodedURIComponent(jsonString);
+    return compressed;
 };
 
 const decodeParams = () => {
     const hash = window.location.hash.substring(1);
-    const params = new URLSearchParams(hash);
-    const result = {};
-    params.forEach((value, key) => {
-        result[key] = value;
-    });
-    return result;
+    
+    if (!hash) return {};
+    
+    // Check if it's the new compressed format (starts with a letter or number)
+    // Old format would start with parameter names like "cm=" or "lt="
+    if (hash.includes('=')) {
+        // Old format - backwards compatibility
+        const params = new URLSearchParams(hash);
+        const result = {};
+        params.forEach((value, key) => {
+            result[key] = value;
+        });
+        return result;
+    } else {
+        // New compressed format
+        try {
+            const decompressed = LZString.decompressFromEncodedURIComponent(hash);
+            if (decompressed) {
+                return JSON.parse(decompressed);
+            }
+        } catch (e) {
+            console.error('Failed to decompress URL parameters:', e);
+        }
+        return {};
+    }
 };
 
 // Main App Component
@@ -626,15 +651,6 @@ const App = () => {
                 <header className="mb-8 text-center">
                     <h1 className="text-4xl font-bold text-gray-800">Avansert Lånekalkulator</h1>
                     <p className="text-lg text-gray-600 mt-2">Se hva dere har råd til og hvordan kostnadene fordeles.</p>
-                    <button
-                        onClick={() => {
-                            navigator.clipboard.writeText(window.location.href);
-                            alert('Link kopiert til utklippstavlen!');
-                        }}
-                        className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                    >
-                        🔗 Kopier link med innstillinger
-                    </button>
                 </header>
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -663,21 +679,6 @@ const App = () => {
                         <h3 className="text-xl font-semibold text-gray-700 mt-8 mb-4 border-b pb-2">Lånebetingelser</h3>
                         <InputSlider label="Rente (%)" value={interestRate} onChange={e => setInterestRate(Number(e.target.value))} min={0.1} max={20} step={0.01} format="percent" />
                         <InputSlider label="Løpetid (År)" value={loanTerm} onChange={e => setLoanTerm(Number(e.target.value))} min={1} max={40} step={1} format="years" />
-        
-                        {calculationMode === 'byPayment' ? (
-                            <div className="mt-6 pt-6 border-t bg-blue-50 p-4 rounded-lg">
-                                <h4 className="font-semibold text-gray-700 mb-2">Resultat:</h4>
-                                <SummaryBox label="Maksimal Boligpris" value={finalPropertyValue} format="currency" color="text-purple-600" isLarge={true} />
-                                <SummaryBox label="Månedlig Betaling" value={calculatedMonthlyPayment} format="currency" color="text-purple-600" isLarge={true} />
-                                <SummaryBox label="Tilhørende Lånebeløp" value={loanAmount} format="currency" color="text-indigo-600" isLarge={true} />
-                            </div>
-                        ) : (
-                            <div className="mt-6 pt-6 border-t bg-blue-50 p-4 rounded-lg">
-                                <h4 className="font-semibold text-gray-700 mb-2">Resultat:</h4>
-                                <SummaryBox label="Månedlig Betaling" value={calculatedMonthlyPayment} format="currency" color="text-purple-600" isLarge={true} />
-                                <SummaryBox label="Nødvendig Lånebeløp" value={loanAmount} format="currency" color="text-indigo-600" isLarge={true} />
-                            </div>
-                        )}
 
                         <h3 className="text-xl font-semibold text-gray-700 mt-8 mb-4 border-b pb-2">Faste Kostnader & Inntekt</h3>
                         <InputSlider label="Kommunale Avgifter (kr/år)" value={municipalDues} onChange={e => setMunicipalDues(Number(e.target.value))} min={0} max={100000} step={1000} format="currency" />
@@ -708,6 +709,32 @@ const App = () => {
                     <div className="lg:col-span-2 space-y-8">
                         <div className="bg-white p-6 rounded-xl shadow-lg">
                             <h2 className="text-2xl font-semibold text-gray-700 mb-4">Individuell Fordeling</h2>
+                            
+                            {/* Vis total boligpris */}
+                            <div className="bg-gradient-to-r from-indigo-50 to-blue-50 p-4 rounded-lg mb-6 border-2 border-indigo-200">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <span className="text-3xl">🏠</span>
+                                        <div>
+                                            <p className="text-sm font-medium text-gray-600">
+                                                Total Boligpris {calculationMode === 'byPayment' ? '(Beregnet)' : ''}
+                                            </p>
+                                            <p className="text-3xl font-bold text-indigo-700">
+                                                {formatCurrency(finalPropertyValue)}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    {calculationMode === 'byPayment' && (
+                                        <div className="text-right">
+                                            <p className="text-xs text-gray-500">Basert på</p>
+                                            <p className="text-sm font-semibold text-gray-700">
+                                                {formatCurrency(desiredMonthlyPayment)}/mnd
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                            
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div className="bg-gray-50 p-4 rounded-lg">
                                     <h3 className="font-bold text-lg text-gray-800 mb-3">Låntaker 1 (Deg)</h3>
