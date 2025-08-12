@@ -99,6 +99,8 @@ const App = () => {
     const [maintenance, setMaintenance] = useState(parseInt(urlParams.maint) || 24000);
     const [annualAppreciation, setAnnualAppreciation] = useState(parseFloat(urlParams.aa) || 3.0);
     const [requiredReturn, setRequiredReturn] = useState(parseFloat(urlParams.rr) || 5.0);
+    // Skattefradrag for renter (rentefradrag)
+    const [taxRate, setTaxRate] = useState(parseFloat(urlParams.tr) || 22.0);
     const [rentalIncome, setRentalIncome] = useState(parseInt(urlParams.ri) || 0);
     // Alternative rent cost removed - now calculating break-even automatically
     const alternativeRentCost = 0; // Not used anymore, kept for backwards compatibility in calculations
@@ -137,6 +139,12 @@ const App = () => {
         serialLastPayment: 0
     });
     const [propertyTax, setPropertyTax] = useState(0);
+    const [showAllAmortizationAnnuity, setShowAllAmortizationAnnuity] = useState(false);
+    const [showAllAmortizationSerial, setShowAllAmortizationSerial] = useState(false);
+    const [expandAnnuity, setExpandAnnuity] = useState(false);
+    const [expandSerial, setExpandSerial] = useState(false);
+    const [showAnnuityPersons, setShowAnnuityPersons] = useState(false);
+    const [showSerialPersons, setShowSerialPersons] = useState(false);
     
     // Update URL with current state
     const updateURL = useCallback(() => {
@@ -159,7 +167,8 @@ const App = () => {
             ptm: propertyTaxMode,
             cpt: customPropertyTaxAmount,
             dmp: desiredMonthlyPayment,
-            pv: propertyValue
+            pv: propertyValue,
+            tr: taxRate
         };
         
         const hash = encodeParams(params);
@@ -168,7 +177,7 @@ const App = () => {
         calculationMode, loanType, interestRate, loanTerm, downPayment1, downPayment2,
         ownershipSplit, municipalDues, homeInsurance, hoa, maintenance, annualAppreciation,
         requiredReturn, rentalIncome, alternativeRentCost, propertyTaxMode, customPropertyTaxAmount,
-        desiredMonthlyPayment, propertyValue
+        desiredMonthlyPayment, propertyValue, taxRate
     ]);
     
     // Debounced URL update
@@ -611,6 +620,60 @@ const App = () => {
         realPropertyGainSerial
     } = calculateAdvancedMetrics;
 
+    // Generer nedbetalingsplaner for begge lånetyper per person
+    const buildAmortization = useCallback((amount, kind) => {
+        if (!amount || amount <= 0 || !isFinite(amount)) return [];
+        const monthlyRate = interestRate / 100 / 12;
+        const n = loanTerm * 12;
+        let balance = amount;
+        const rows = [];
+        if (kind === 'annuity') {
+            const M = amount * (monthlyRate * Math.pow(1 + monthlyRate, n)) / (Math.pow(1 + monthlyRate, n) - 1);
+            for (let i = 1; i <= n; i++) {
+                if (balance <= 0) break;
+                const interest = balance * monthlyRate;
+                const principal = M - interest;
+                balance -= principal;
+                rows.push({ month: i, principal, interest, totalPayment: M, balance: balance < 0 ? 0 : balance });
+            }
+        } else { // serial
+            const principalPerMonth = amount / n;
+            for (let i = 1; i <= n; i++) {
+                if (balance <= 0) break;
+                const interest = balance * monthlyRate;
+                const totalPayment = principalPerMonth + interest;
+                balance -= principalPerMonth;
+                rows.push({ month: i, principal: principalPerMonth, interest, totalPayment, balance: balance < 0 ? 0 : balance });
+            }
+        }
+        return rows;
+    }, [interestRate, loanTerm]);
+
+    const amortAnnuityPerson1 = useMemo(() => buildAmortization(loanDetails1.amount, 'annuity'), [buildAmortization, loanDetails1.amount]);
+    const amortAnnuityPerson2 = useMemo(() => buildAmortization(loanDetails2.amount, 'annuity'), [buildAmortization, loanDetails2.amount]);
+    const amortSerialPerson1 = useMemo(() => buildAmortization(loanDetails1.amount, 'serial'), [buildAmortization, loanDetails1.amount]);
+    const amortSerialPerson2 = useMemo(() => buildAmortization(loanDetails2.amount, 'serial'), [buildAmortization, loanDetails2.amount]);
+
+    const combineAmort = useCallback((rows1, rows2) => {
+        const n = Math.max(rows1.length, rows2.length);
+        const result = [];
+        for (let i = 0; i < n; i++) {
+            const r1 = rows1[i] || { month: i + 1, principal: 0, interest: 0, totalPayment: 0, balance: 0 };
+            const r2 = rows2[i] || { month: i + 1, principal: 0, interest: 0, totalPayment: 0, balance: 0 };
+            result.push({
+                month: i + 1,
+                principal: (r1.principal || 0) + (r2.principal || 0),
+                interest: (r1.interest || 0) + (r2.interest || 0),
+                totalPayment: (r1.totalPayment || 0) + (r2.totalPayment || 0),
+                balance: (r1.balance || 0) + (r2.balance || 0),
+            });
+        }
+        return result;
+    }, []);
+
+    const amortAnnuityTotal = useMemo(() => combineAmort(amortAnnuityPerson1, amortAnnuityPerson2), [combineAmort, amortAnnuityPerson1, amortAnnuityPerson2]);
+    const amortSerialTotal = useMemo(() => combineAmort(amortSerialPerson1, amortSerialPerson2), [combineAmort, amortSerialPerson1, amortSerialPerson2]);
+
     // Chart Data
     const amortizationChartData = {
         labels: amortizationData.map(d => `Måned ${d.month}`),
@@ -644,6 +707,26 @@ const App = () => {
     const firstPaymentInterest = amortizationData.length > 0 ? amortizationData[0].interest : 0;
     const principalPercentage = calculatedMonthlyPayment > 0 ? ((firstPaymentPrincipal / calculatedMonthlyPayment) * 100).toFixed(1) : 0;
     const interestPercentage = calculatedMonthlyPayment > 0 ? ((firstPaymentInterest / calculatedMonthlyPayment) * 100).toFixed(1) : 0;
+
+    // Første måneds skattefradrag og netto lånekostnad (for begge lånetyper)
+    const annuityFirstInterest = loanTypeComparison && loanTypeComparison.annuity && loanTypeComparison.annuity.monthlyPayments
+        ? (loanTypeComparison.annuity.monthlyPayments.find(mp => mp.month === 1)?.interest || 0)
+        : 0;
+    const serialFirstInterest = loanTypeComparison && loanTypeComparison.serial && loanTypeComparison.serial.monthlyPayments
+        ? (loanTypeComparison.serial.monthlyPayments.find(mp => mp.month === 1)?.interest || 0)
+        : 0;
+
+    const annuityTaxDeductionMonthly = annuityFirstInterest * (taxRate / 100);
+    const serialTaxDeductionMonthly = serialFirstInterest * (taxRate / 100);
+
+    const annuityNetLoanCostMonthly = loanTypeComparison ? (loanTypeComparison.annuity.firstPayment - annuityTaxDeductionMonthly) : 0;
+    const serialNetLoanCostMonthly = loanTypeComparison ? (loanTypeComparison.serial.firstPayment - serialTaxDeductionMonthly) : 0;
+
+    // Første måned per person for begge lånetyper (til Individuell fordeling)
+    const p1AnnFirst = amortAnnuityPerson1 && amortAnnuityPerson1.length > 0 ? amortAnnuityPerson1[0] : null;
+    const p2AnnFirst = amortAnnuityPerson2 && amortAnnuityPerson2.length > 0 ? amortAnnuityPerson2[0] : null;
+    const p1SerFirst = amortSerialPerson1 && amortSerialPerson1.length > 0 ? amortSerialPerson1[0] : null;
+    const p2SerFirst = amortSerialPerson2 && amortSerialPerson2.length > 0 ? amortSerialPerson2[0] : null;
 
     return (
         <div className="bg-gray-100 min-h-screen p-4 sm:p-6 lg:p-8 font-sans">
@@ -679,6 +762,7 @@ const App = () => {
                         <h3 className="text-xl font-semibold text-gray-700 mt-8 mb-4 border-b pb-2">Lånebetingelser</h3>
                         <InputSlider label="Rente (%)" value={interestRate} onChange={e => setInterestRate(Number(e.target.value))} min={0.1} max={20} step={0.01} format="percent" />
                         <InputSlider label="Løpetid (År)" value={loanTerm} onChange={e => setLoanTerm(Number(e.target.value))} min={1} max={40} step={1} format="years" />
+                        <InputSlider label="Rentefradrag-sats (%) (Norge 2025: 22%)" value={taxRate} onChange={e => setTaxRate(Number(e.target.value))} min={0} max={50} step={0.1} format="percent" />
 
                         <h3 className="text-xl font-semibold text-gray-700 mt-8 mb-4 border-b pb-2">Faste Kostnader & Inntekt</h3>
                         <InputSlider label="Kommunale Avgifter (kr/år)" value={municipalDues} onChange={e => setMunicipalDues(Number(e.target.value))} min={0} max={100000} step={1000} format="currency" />
@@ -753,6 +837,14 @@ const App = () => {
                                                     <span className="font-semibold text-blue-700">{formatCurrency(Math.round(loanDetails1.annuityPayment))}</span>
                                                 </div>
                                                 <p className="text-xs text-gray-500 mt-1">Fast betaling</p>
+                                                {p1AnnFirst && (
+                                                    <div className="mt-1 grid grid-cols-2 gap-2 text-xs text-gray-600">
+                                                        <div>Avdrag: <span className="font-medium text-gray-800">{formatCurrency(Math.round(p1AnnFirst.principal))}</span></div>
+                                                        <div>Renter: <span className="font-medium text-gray-800">{formatCurrency(Math.round(p1AnnFirst.interest))}</span></div>
+                                                        <div>Rentefradrag: <span className="font-medium text-green-700">-{formatCurrency(Math.round(p1AnnFirst.interest * (taxRate/100)))}</span></div>
+                                                        <div>Netto lån: <span className="font-medium text-gray-800">{formatCurrency(Math.round(p1AnnFirst.totalPayment - (p1AnnFirst.interest * (taxRate/100))))}</span></div>
+                                                    </div>
+                                                )}
                                             </div>
                                             <div className="bg-green-50 p-2 rounded border-l-4 border-green-400">
                                                 <div className="flex justify-between items-center">
@@ -760,6 +852,14 @@ const App = () => {
                                                     <span className="font-semibold text-green-700">{formatCurrency(Math.round(loanDetails1.serialFirstPayment))}</span>
                                                 </div>
                                                 <p className="text-xs text-gray-500 mt-1">Første: {formatCurrency(Math.round(loanDetails1.serialFirstPayment))} → Siste: {formatCurrency(Math.round(loanDetails1.serialLastPayment))}</p>
+                                                {p1SerFirst && (
+                                                    <div className="mt-1 grid grid-cols-2 gap-2 text-xs text-gray-600">
+                                                        <div>Avdrag: <span className="font-medium text-gray-800">{formatCurrency(Math.round(p1SerFirst.principal))}</span></div>
+                                                        <div>Renter: <span className="font-medium text-gray-800">{formatCurrency(Math.round(p1SerFirst.interest))}</span></div>
+                                                        <div>Rentefradrag: <span className="font-medium text-green-700">-{formatCurrency(Math.round(p1SerFirst.interest * (taxRate/100)))}</span></div>
+                                                        <div>Netto lån: <span className="font-medium text-gray-800">{formatCurrency(Math.round(p1SerFirst.totalPayment - (p1SerFirst.interest * (taxRate/100))))}</span></div>
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
                                     </div>
@@ -778,11 +878,19 @@ const App = () => {
                                             <p className="text-sm font-medium text-gray-700 mb-2">Månedlige betalinger:</p>
                                             <div className="space-y-2">
                                                 <div className="bg-blue-50 p-2 rounded border-l-4 border-blue-400">
-                                                    <div className="flex justify-between items-center">
-                                                        <span className="text-sm text-gray-700">Annuitetslån {loanType === 'annuity' ? '(✓)' : ''}</span>
-                                                        <span className="font-semibold text-blue-700">{formatCurrency(Math.round(loanDetails2.annuityPayment))}</span>
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-sm text-gray-700">Annuitetslån {loanType === 'annuity' ? '(✓)' : ''}</span>
+                                                    <span className="font-semibold text-blue-700">{formatCurrency(Math.round(loanDetails2.annuityPayment))}</span>
+                                                </div>
+                                                <p className="text-xs text-gray-500 mt-1">Fast betaling</p>
+                                                {p2AnnFirst && (
+                                                    <div className="mt-1 grid grid-cols-2 gap-2 text-xs text-gray-600">
+                                                        <div>Avdrag: <span className="font-medium text-gray-800">{formatCurrency(Math.round(p2AnnFirst.principal))}</span></div>
+                                                        <div>Renter: <span className="font-medium text-gray-800">{formatCurrency(Math.round(p2AnnFirst.interest))}</span></div>
+                                                        <div>Rentefradrag: <span className="font-medium text-green-700">-{formatCurrency(Math.round(p2AnnFirst.interest * (taxRate/100)))}</span></div>
+                                                        <div>Netto lån: <span className="font-medium text-gray-800">{formatCurrency(Math.round(p2AnnFirst.totalPayment - (p2AnnFirst.interest * (taxRate/100))))}</span></div>
                                                     </div>
-                                                    <p className="text-xs text-gray-500 mt-1">Fast betaling</p>
+                                                )}
                                                 </div>
                                                 <div className="bg-green-50 p-2 rounded border-l-4 border-green-400">
                                                     <div className="flex justify-between items-center">
@@ -790,6 +898,14 @@ const App = () => {
                                                         <span className="font-semibold text-green-700">{formatCurrency(Math.round(loanDetails2.serialFirstPayment))}</span>
                                                     </div>
                                                     <p className="text-xs text-gray-500 mt-1">Første: {formatCurrency(Math.round(loanDetails2.serialFirstPayment))} → Siste: {formatCurrency(Math.round(loanDetails2.serialLastPayment))}</p>
+                                                    {p2SerFirst && (
+                                                        <div className="mt-1 grid grid-cols-2 gap-2 text-xs text-gray-600">
+                                                            <div>Avdrag: <span className="font-medium text-gray-800">{formatCurrency(Math.round(p2SerFirst.principal))}</span></div>
+                                                            <div>Renter: <span className="font-medium text-gray-800">{formatCurrency(Math.round(p2SerFirst.interest))}</span></div>
+                                                            <div>Rentefradrag: <span className="font-medium text-green-700">-{formatCurrency(Math.round(p2SerFirst.interest * (taxRate/100)))}</span></div>
+                                                            <div>Netto lån: <span className="font-medium text-gray-800">{formatCurrency(Math.round(p2SerFirst.totalPayment - (p2SerFirst.interest * (taxRate/100))))}</span></div>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             </div>
                                         </div>
@@ -800,6 +916,256 @@ const App = () => {
                                     )}
                                 </div>
                             </div>
+                        </div>
+
+                        {/* Nedbetalingsplan – Annuitet (kollapsbar) */}
+                        <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+                            <div className="bg-gradient-to-r from-sky-600 to-cyan-600 text-white p-6 flex items-center justify-between cursor-pointer" onClick={() => setExpandAnnuity(v => !v)}>
+                                <div className="flex items-center gap-2">
+                                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                    </svg>
+                                    <div>
+                                        <h2 className="text-2xl font-bold">Nedbetalingsplan – Annuitetslån</h2>
+                                        <p className="text-sky-100 mt-1">Totalt og per person</p>
+                                    </div>
+                                </div>
+                                <span className="text-white text-sm bg-sky-700/40 px-3 py-1 rounded-md">{expandAnnuity ? 'Skjul' : 'Vis'}</span>
+                            </div>
+                            {expandAnnuity && (
+                                <div className="p-6 bg-gray-50 space-y-6">
+                                    {/* Total tabell */}
+                                    <div>
+                                        <div className="flex items-center justify-between mb-2">
+                                            <h3 className="text-lg font-semibold text-gray-800">Totalt (Person 1 + Person 2)</h3>
+                                        </div>
+                                        {amortAnnuityTotal.length > 0 ? (
+                                            <>
+                                                <div className="overflow-auto rounded-lg border">
+                                                    <table className="min-w-full divide-y divide-gray-200">
+                                                        <thead className="bg-gray-100">
+                                                            <tr>
+                                                                <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">Måned</th>
+                                                                <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">Avdrag</th>
+                                                                <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">Renter</th>
+                                                                <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">Rentefradrag</th>
+                                                                <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">Brutto lån</th>
+                                                                <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">Netto lån</th>
+                                                                <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">Restgjeld</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody className="divide-y divide-gray-100 bg-white">
+                                                            {(showAllAmortizationAnnuity ? amortAnnuityTotal : amortAnnuityTotal.slice(0, 12)).map((row) => {
+                                                                const taxDeduction = row.interest * (taxRate / 100);
+                                                                const netLoan = row.totalPayment - taxDeduction;
+                                                                return (
+                                                                    <tr key={row.month} className="hover:bg-gray-50">
+                                                                        <td className="px-3 py-2 text-sm text-gray-700">{row.month}</td>
+                                                                        <td className="px-3 py-2 text-sm text-gray-700">{formatCurrency(Math.round(row.principal))}</td>
+                                                                        <td className="px-3 py-2 text-sm text-gray-700">{formatCurrency(Math.round(row.interest))}</td>
+                                                                        <td className="px-3 py-2 text-sm text-green-700">-{formatCurrency(Math.round(taxDeduction))}</td>
+                                                                        <td className="px-3 py-2 text-sm text-gray-700">{formatCurrency(Math.round(row.totalPayment))}</td>
+                                                                        <td className="px-3 py-2 text-sm font-medium text-gray-800">{formatCurrency(Math.round(netLoan))}</td>
+                                                                        <td className="px-3 py-2 text-sm text-gray-700">{formatCurrency(Math.round(row.balance))}</td>
+                                                                    </tr>
+                                                                );
+                                                            })}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                                {amortAnnuityTotal.length > 12 && (
+                                                    <div className="mt-2 flex justify-between items-center">
+                                                        <p className="text-xs text-gray-500">Viser {showAllAmortizationAnnuity ? amortAnnuityTotal.length : 12} av {amortAnnuityTotal.length} måneder</p>
+                                                        <button onClick={() => setShowAllAmortizationAnnuity(v => !v)} className="px-3 py-2 text-sm rounded-md bg-white border shadow-sm hover:bg-gray-50">
+                                                            {showAllAmortizationAnnuity ? 'Vis færre måneder' : 'Vis alle måneder'}
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </>
+                                        ) : (
+                                            <p className="text-sm text-gray-600">Ingen nedbetalingsdata tilgjengelig.</p>
+                                        )}
+                                    </div>
+
+                                    {/* Person-detaljer (kollapsbar) */}
+                                    <div className="pt-2">
+                                        <button onClick={() => setShowAnnuityPersons(v => !v)} className="text-sm px-3 py-2 rounded-md border bg-white shadow-sm hover:bg-gray-50">
+                                            {showAnnuityPersons ? 'Skjul personfordeling' : 'Vis personfordeling'}
+                                        </button>
+                                        {showAnnuityPersons && (
+                                            <div className="mt-4 space-y-8">
+                                                {[{ title: 'Person 1', rows: amortAnnuityPerson1 }, { title: 'Person 2', rows: amortAnnuityPerson2 }].map(({ title, rows }) => (
+                                                    <div key={title}>
+                                                        <h3 className="text-lg font-semibold text-gray-800 mb-2">{title}</h3>
+                                                        {rows && rows.length > 0 ? (
+                                                            <div className="overflow-auto rounded-lg border">
+                                                                <table className="min-w-full divide-y divide-gray-200">
+                                                                    <thead className="bg-gray-100">
+                                                                        <tr>
+                                                                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">Måned</th>
+                                                                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">Avdrag</th>
+                                                                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">Renter</th>
+                                                                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">Rentefradrag</th>
+                                                                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">Brutto lån</th>
+                                                                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">Netto lån</th>
+                                                                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">Restgjeld</th>
+                                                                        </tr>
+                                                                    </thead>
+                                                                    <tbody className="divide-y divide-gray-100 bg-white">
+                                                                        {(showAllAmortizationAnnuity ? rows : rows.slice(0, 12)).map((row) => {
+                                                                            const taxDeduction = row.interest * (taxRate / 100);
+                                                                            const netLoan = row.totalPayment - taxDeduction;
+                                                                            return (
+                                                                                <tr key={row.month} className="hover:bg-gray-50">
+                                                                                    <td className="px-3 py-2 text-sm text-gray-700">{row.month}</td>
+                                                                                    <td className="px-3 py-2 text-sm text-gray-700">{formatCurrency(Math.round(row.principal))}</td>
+                                                                                    <td className="px-3 py-2 text-sm text-gray-700">{formatCurrency(Math.round(row.interest))}</td>
+                                                                                    <td className="px-3 py-2 text-sm text-green-700">-{formatCurrency(Math.round(taxDeduction))}</td>
+                                                                                    <td className="px-3 py-2 text-sm text-gray-700">{formatCurrency(Math.round(row.totalPayment))}</td>
+                                                                                    <td className="px-3 py-2 text-sm font-medium text-gray-800">{formatCurrency(Math.round(netLoan))}</td>
+                                                                                    <td className="px-3 py-2 text-sm text-gray-700">{formatCurrency(Math.round(row.balance))}</td>
+                                                                                </tr>
+                                                                            );
+                                                                        })}
+                                                                    </tbody>
+                                                                </table>
+                                                            </div>
+                                                        ) : (
+                                                            <p className="text-sm text-gray-600">Ingen nedbetalingsdata tilgjengelig.</p>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                    <p className="text-[11px] text-gray-400 mt-1">Rentefradrag beregnes som {taxRate}% av betalte renter.</p>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Nedbetalingsplan – Serielån (kollapsbar) */}
+                        <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+                            <div className="bg-gradient-to-r from-emerald-600 to-green-600 text-white p-6 flex items-center justify-between cursor-pointer" onClick={() => setExpandSerial(v => !v)}>
+                                <div className="flex items-center gap-2">
+                                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                    </svg>
+                                    <div>
+                                        <h2 className="text-2xl font-bold">Nedbetalingsplan – Serielån</h2>
+                                        <p className="text-emerald-100 mt-1">Totalt og per person</p>
+                                    </div>
+                                </div>
+                                <span className="text-white text-sm bg-green-700/40 px-3 py-1 rounded-md">{expandSerial ? 'Skjul' : 'Vis'}</span>
+                            </div>
+                            {expandSerial && (
+                                <div className="p-6 bg-gray-50 space-y-6">
+                                    {/* Total tabell */}
+                                    <div>
+                                        <div className="flex items-center justify-between mb-2">
+                                            <h3 className="text-lg font-semibold text-gray-800">Totalt (Person 1 + Person 2)</h3>
+                                        </div>
+                                        {amortSerialTotal.length > 0 ? (
+                                            <>
+                                                <div className="overflow-auto rounded-lg border">
+                                                    <table className="min-w-full divide-y divide-gray-200">
+                                                        <thead className="bg-gray-100">
+                                                            <tr>
+                                                                <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">Måned</th>
+                                                                <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">Avdrag</th>
+                                                                <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">Renter</th>
+                                                                <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">Rentefradrag</th>
+                                                                <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">Brutto lån</th>
+                                                                <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">Netto lån</th>
+                                                                <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">Restgjeld</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody className="divide-y divide-gray-100 bg-white">
+                                                            {(showAllAmortizationSerial ? amortSerialTotal : amortSerialTotal.slice(0, 12)).map((row) => {
+                                                                const taxDeduction = row.interest * (taxRate / 100);
+                                                                const netLoan = row.totalPayment - taxDeduction;
+                                                                return (
+                                                                    <tr key={row.month} className="hover:bg-gray-50">
+                                                                        <td className="px-3 py-2 text-sm text-gray-700">{row.month}</td>
+                                                                        <td className="px-3 py-2 text-sm text-gray-700">{formatCurrency(Math.round(row.principal))}</td>
+                                                                        <td className="px-3 py-2 text-sm text-gray-700">{formatCurrency(Math.round(row.interest))}</td>
+                                                                        <td className="px-3 py-2 text-sm text-green-700">-{formatCurrency(Math.round(taxDeduction))}</td>
+                                                                        <td className="px-3 py-2 text-sm text-gray-700">{formatCurrency(Math.round(row.totalPayment))}</td>
+                                                                        <td className="px-3 py-2 text-sm font-medium text-gray-800">{formatCurrency(Math.round(netLoan))}</td>
+                                                                        <td className="px-3 py-2 text-sm text-gray-700">{formatCurrency(Math.round(row.balance))}</td>
+                                                                    </tr>
+                                                                );
+                                                            })}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                                {amortSerialTotal.length > 12 && (
+                                                    <div className="mt-2 flex justify-between items-center">
+                                                        <p className="text-xs text-gray-500">Viser {showAllAmortizationSerial ? amortSerialTotal.length : 12} av {amortSerialTotal.length} måneder</p>
+                                                        <button onClick={() => setShowAllAmortizationSerial(v => !v)} className="px-3 py-2 text-sm rounded-md bg-white border shadow-sm hover:bg-gray-50">
+                                                            {showAllAmortizationSerial ? 'Vis færre måneder' : 'Vis alle måneder'}
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </>
+                                        ) : (
+                                            <p className="text-sm text-gray-600">Ingen nedbetalingsdata tilgjengelig.</p>
+                                        )}
+                                    </div>
+
+                                    {/* Person-detaljer (kollapsbar) */}
+                                    <div className="pt-2">
+                                        <button onClick={() => setShowSerialPersons(v => !v)} className="text-sm px-3 py-2 rounded-md border bg-white shadow-sm hover:bg-gray-50">
+                                            {showSerialPersons ? 'Skjul personfordeling' : 'Vis personfordeling'}
+                                        </button>
+                                        {showSerialPersons && (
+                                            <div className="mt-4 space-y-8">
+                                                {[{ title: 'Person 1', rows: amortSerialPerson1 }, { title: 'Person 2', rows: amortSerialPerson2 }].map(({ title, rows }) => (
+                                                    <div key={title}>
+                                                        <h3 className="text-lg font-semibold text-gray-800 mb-2">{title}</h3>
+                                                        {rows && rows.length > 0 ? (
+                                                            <div className="overflow-auto rounded-lg border">
+                                                                <table className="min-w-full divide-y divide-gray-200">
+                                                                    <thead className="bg-gray-100">
+                                                                        <tr>
+                                                                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">Måned</th>
+                                                                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">Avdrag</th>
+                                                                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">Renter</th>
+                                                                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">Rentefradrag</th>
+                                                                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">Brutto lån</th>
+                                                                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">Netto lån</th>
+                                                                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">Restgjeld</th>
+                                                                        </tr>
+                                                                    </thead>
+                                                                    <tbody className="divide-y divide-gray-100 bg-white">
+                                                                        {(showAllAmortizationSerial ? rows : rows.slice(0, 12)).map((row) => {
+                                                                            const taxDeduction = row.interest * (taxRate / 100);
+                                                                            const netLoan = row.totalPayment - taxDeduction;
+                                                                            return (
+                                                                                <tr key={row.month} className="hover:bg-gray-50">
+                                                                                    <td className="px-3 py-2 text-sm text-gray-700">{row.month}</td>
+                                                                                    <td className="px-3 py-2 text-sm text-gray-700">{formatCurrency(Math.round(row.principal))}</td>
+                                                                                    <td className="px-3 py-2 text-sm text-gray-700">{formatCurrency(Math.round(row.interest))}</td>
+                                                                                    <td className="px-3 py-2 text-sm text-green-700">-{formatCurrency(Math.round(taxDeduction))}</td>
+                                                                                    <td className="px-3 py-2 text-sm text-gray-700">{formatCurrency(Math.round(row.totalPayment))}</td>
+                                                                                    <td className="px-3 py-2 text-sm font-medium text-gray-800">{formatCurrency(Math.round(netLoan))}</td>
+                                                                                    <td className="px-3 py-2 text-sm text-gray-700">{formatCurrency(Math.round(row.balance))}</td>
+                                                                                </tr>
+                                                                            );
+                                                                        })}
+                                                                    </tbody>
+                                                                </table>
+                                                            </div>
+                                                        ) : (
+                                                            <p className="text-sm text-gray-600">Ingen nedbetalingsdata tilgjengelig.</p>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                    <p className="text-[11px] text-gray-400 mt-1">Rentefradrag beregnes som {taxRate}% av betalte renter.</p>
+                                </div>
+                            )}
                         </div>
 
                         <div className="bg-white rounded-xl shadow-lg overflow-hidden">
@@ -835,9 +1201,16 @@ const App = () => {
                                                         <p className="text-2xl font-bold text-blue-600">
                                                             {formatCurrency(Math.round(loanTypeComparison.annuity.firstPayment + (municipalDues / 12) + (propertyTax / 12) + (maintenance / 12) + (homeInsurance / 12) + hoa - rentalIncome))}
                                                         </p>
-                                                        <p className="text-xs text-gray-500 mt-1">
-                                                            Lånebeløp: {formatCurrency(Math.round(loanTypeComparison.annuity.firstPayment))}
-                                                        </p>
+                                                    <p className="text-xs text-gray-500 mt-1">
+                                                        Brutto lån: {formatCurrency(Math.round(loanTypeComparison.annuity.firstPayment))}
+                                                    </p>
+                                                    <p className="text-xs text-green-600 mt-1">
+                                                        Rentefradrag: -{formatCurrency(Math.round(annuityTaxDeductionMonthly))}
+                                                    </p>
+                                                    <p className="text-xs font-medium text-gray-700 mt-1">
+                                                        Netto lånekostnad: {formatCurrency(Math.round(annuityNetLoanCostMonthly))}
+                                                    </p>
+                                                    <p className="text-[11px] text-gray-400 mt-1">Gjelder første måned; varierer over tid</p>
                                                         <p className="text-xs text-red-600 mt-1">
                                                             Total rente: {formatCurrency(Math.round(loanTypeComparison.annuity.totalInterest))}
                                                         </p>
@@ -850,8 +1223,15 @@ const App = () => {
                                                             {formatCurrency(Math.round(loanTypeComparison.serial.firstPayment + (municipalDues / 12) + (propertyTax / 12) + (maintenance / 12) + (homeInsurance / 12) + hoa - rentalIncome))}
                                                         </p>
                                                         <p className="text-xs text-gray-500 mt-1">
-                                                            Første: {formatCurrency(Math.round(loanTypeComparison.serial.firstPayment))} → Siste: {formatCurrency(Math.round(loanTypeComparison.serial.lastPayment))}
+                                                            Brutto lån (første): {formatCurrency(Math.round(loanTypeComparison.serial.firstPayment))} → Siste: {formatCurrency(Math.round(loanTypeComparison.serial.lastPayment))}
                                                         </p>
+                                                        <p className="text-xs text-green-600 mt-1">
+                                                            Rentefradrag (første): -{formatCurrency(Math.round(serialTaxDeductionMonthly))}
+                                                        </p>
+                                                        <p className="text-xs font-medium text-gray-700 mt-1">
+                                                            Netto lånekostnad (første): {formatCurrency(Math.round(serialNetLoanCostMonthly))}
+                                                        </p>
+                                                        <p className="text-[11px] text-gray-400 mt-1">Gjelder første måned; varierer over tid</p>
                                                         <p className="text-xs text-red-600 mt-1">
                                                             Total rente: {formatCurrency(Math.round(loanTypeComparison.serial.totalInterest))}
                                                         </p>
