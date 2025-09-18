@@ -693,7 +693,7 @@ const App = () => {
     
     const paymentBreakdownChartData = {
         labels: paymentBreakdownData.map(item => 
-            `${item.label} (${((item.value / totalPaymentBreakdown) * 100).toFixed(1)}%)`
+            `${item.label} (${((item.value / totalPaymentBreakdown) * 100).toFixed(1)} %)`
         ),
         datasets: [{ 
             data: paymentBreakdownData.map(item => item.value), 
@@ -760,17 +760,17 @@ const App = () => {
                         <InputSlider label="Ønsket Eierandel (Din andel %)" value={ownershipSplit} onChange={e => setOwnershipSplit(Number(e.target.value))} min={0} max={100} step={1} format="percent" />
 
                         <h3 className="text-xl font-semibold text-gray-700 mt-8 mb-4 border-b pb-2">Lånebetingelser</h3>
-                        <InputSlider label="Rente (%)" value={interestRate} onChange={e => setInterestRate(Number(e.target.value))} min={0.1} max={20} step={0.01} format="percent" />
+                        <InputSlider label="Rente ( %)" value={interestRate} onChange={e => setInterestRate(Number(e.target.value))} min={0.1} max={20} step={0.01} format="percent" />
                         <InputSlider label="Løpetid (År)" value={loanTerm} onChange={e => setLoanTerm(Number(e.target.value))} min={1} max={40} step={1} format="years" />
-                        <InputSlider label="Rentefradrag-sats (%) (Norge 2025: 22%)" value={taxRate} onChange={e => setTaxRate(Number(e.target.value))} min={0} max={50} step={0.1} format="percent" />
+                        <InputSlider label="Rentefradrag-sats ( %) (Norge 2025: 22 %)" value={taxRate} onChange={e => setTaxRate(Number(e.target.value))} min={0} max={50} step={0.1} format="percent" />
 
                         <h3 className="text-xl font-semibold text-gray-700 mt-8 mb-4 border-b pb-2">Faste Kostnader & Inntekt</h3>
                         <InputSlider label="Kommunale Avgifter (kr/år)" value={municipalDues} onChange={e => setMunicipalDues(Number(e.target.value))} min={0} max={100000} step={1000} format="currency" />
                         <InputSlider label="Vedlikehold (kr/år)" value={maintenance} onChange={e => setMaintenance(Number(e.target.value))} min={0} max={100000} step={1000} format="currency" />
                         <InputSlider label="Boligforsikring (kr/år)" value={homeInsurance} onChange={e => setHomeInsurance(Number(e.target.value))} min={0} max={50000} step={500} format="currency" />
                         <InputSlider label="Felleskostnader (kr/mnd)" value={hoa} onChange={e => setHoa(Number(e.target.value))} min={0} max={20000} step={250} format="currency" />
-                        <InputSlider label="Forventet prisendring (% per år)" value={annualAppreciation} onChange={e => setAnnualAppreciation(Number(e.target.value))} min={-10} max={15} step={0.1} format="percent" />
-                        <InputSlider label="Avkastningskrav (% per år)" value={requiredReturn} onChange={e => setRequiredReturn(Number(e.target.value))} min={1} max={15} step={0.1} format="percent" />
+                        <InputSlider label="Forventet prisendring ( % per år)" value={annualAppreciation} onChange={e => setAnnualAppreciation(Number(e.target.value))} min={-10} max={15} step={0.1} format="percent" />
+                        <InputSlider label="Avkastningskrav ( % per år)" value={requiredReturn} onChange={e => setRequiredReturn(Number(e.target.value))} min={1} max={15} step={0.1} format="percent" />
                         <InputSlider label="Utleieinntekt (kr/mnd)" value={rentalIncome} onChange={e => setRentalIncome(Number(e.target.value))} min={0} max={30000} step={500} format="currency" />
 
                         <h3 className="text-xl font-semibold text-gray-700 mt-8 mb-4 border-b pb-2">Eiendomsskatt</h3>
@@ -823,8 +823,8 @@ const App = () => {
                                 <div className="bg-gray-50 p-4 rounded-lg">
                                     <h3 className="font-bold text-lg text-gray-800 mb-3">Låntaker 1 (Deg)</h3>
                                     <div className="space-y-2 mb-4">
-                                        <p className="text-sm text-gray-600">Egenkapital: <span className="font-semibold">{formatCurrency(downPayment1)} ({downPaymentPercentage1.toFixed(0)}%)</span></p>
-                                        <p className="text-sm text-gray-600">Eierandel: <span className="font-semibold">{ownershipSplit}%</span></p>
+                                        <p className="text-sm text-gray-600">Egenkapital: <span className="font-semibold">{formatCurrency(downPayment1)} ({downPaymentPercentage1.toFixed(0)} %)</span></p>
+                                        <p className="text-sm text-gray-600">Eierandel: <span className="font-semibold">{ownershipSplit} %</span></p>
                                         <p className="text-sm text-gray-700 font-semibold">Lånebeløp: {formatCurrency(loanDetails1.amount)}</p>
                                     </div>
                                     
@@ -868,8 +868,8 @@ const App = () => {
                                 <div className="bg-gray-50 p-4 rounded-lg">
                                     <h3 className="font-bold text-lg text-gray-800 mb-3">Låntaker 2</h3>
                                     <div className="space-y-2 mb-4">
-                                        <p className="text-sm text-gray-600">Egenkapital: <span className="font-semibold">{formatCurrency(downPayment2)} ({downPaymentPercentage2.toFixed(0)}%)</span></p>
-                                        <p className="text-sm text-gray-600">Eierandel: <span className="font-semibold">{100 - ownershipSplit}%</span></p>
+                                        <p className="text-sm text-gray-600">Egenkapital: <span className="font-semibold">{formatCurrency(downPayment2)} ({downPaymentPercentage2.toFixed(0)} %)</span></p>
+                                        <p className="text-sm text-gray-600">Eierandel: <span className="font-semibold">{100 - ownershipSplit} %</span></p>
                                         <p className="text-sm text-gray-700 font-semibold">Lånebeløp: {formatCurrency(loanDetails2.amount)}</p>
                                     </div>
                                     
@@ -1038,7 +1038,7 @@ const App = () => {
                                             </div>
                                         )}
                                     </div>
-                                    <p className="text-[11px] text-gray-400 mt-1">Rentefradrag beregnes som {taxRate}% av betalte renter.</p>
+                                    <p className="text-[11px] text-gray-400 mt-1">Rentefradrag beregnes som {taxRate} % av betalte renter.</p>
                                 </div>
                             )}
                         </div>
@@ -1163,7 +1163,7 @@ const App = () => {
                                             </div>
                                         )}
                                     </div>
-                                    <p className="text-[11px] text-gray-400 mt-1">Rentefradrag beregnes som {taxRate}% av betalte renter.</p>
+                                    <p className="text-[11px] text-gray-400 mt-1">Rentefradrag beregnes som {taxRate} % av betalte renter.</p>
                                 </div>
                             )}
                         </div>
@@ -1274,12 +1274,12 @@ const App = () => {
                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                                             </svg>
                                         </div>
-                                        <p className="text-2xl font-bold text-green-600">{finalPropertyValue > 0 ? `${((totalDownPayment / finalPropertyValue) * 100).toFixed(1)}%` : '0%'}</p>
+                                        <p className="text-2xl font-bold text-green-600">{finalPropertyValue > 0 ? `${((totalDownPayment / finalPropertyValue) * 100).toFixed(1)} %` : '0 %'}</p>
                                         <div className="mt-2">
                                             <div className="w-full bg-gray-200 rounded-full h-2">
                                                 <div 
                                                     className="bg-green-500 h-2 rounded-full transition-all duration-500"
-                                                    style={{ width: finalPropertyValue > 0 ? `${((totalDownPayment / finalPropertyValue) * 100).toFixed(1)}%` : '0%' }}
+                                                    style={{ width: finalPropertyValue > 0 ? `${((totalDownPayment / finalPropertyValue) * 100).toFixed(1)} %` : '0 %' }}
                                                 />
                                             </div>
                                         </div>
@@ -1497,7 +1497,7 @@ const App = () => {
                                                                     er boligkjøp mer lønnsomt
                                                                 </p>
                                                                 <p className="text-xs italic">
-                                                                    Forutsetter {requiredReturn}% årlig avkastning på investeringer
+                                                                    Forutsetter {requiredReturn} % årlig avkastning på investeringer
                                                                 </p>
                                                             </div>
                                                         </div>
@@ -1532,7 +1532,7 @@ const App = () => {
 
                                         <div className="bg-white p-5 rounded-xl shadow-md">
                                             <div className="flex items-center justify-between mb-2">
-                                                <span className="text-sm font-medium text-gray-600">Alternativ investering ({requiredReturn}%)</span>
+                                                <span className="text-sm font-medium text-gray-600">Alternativ investering ({requiredReturn} %)</span>
                                                 <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                                                 </svg>
@@ -1580,7 +1580,7 @@ const App = () => {
 
                                         <div className="bg-white p-5 rounded-xl shadow-md">
                                             <div className="flex items-center justify-between mb-2">
-                                                <span className="text-sm font-medium text-gray-600">Investerer alt ({requiredReturn}% årlig)</span>
+                                                <span className="text-sm font-medium text-gray-600">Investerer alt ({requiredReturn}  % årlig)</span>
                                                 <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
                                                 </svg>
